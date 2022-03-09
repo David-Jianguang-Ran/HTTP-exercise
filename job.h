@@ -7,6 +7,7 @@
 
 #define JOB_TIME_TO_LIVE 10
 #define JOB_REQUEST_BUFFER_SIZE 4096
+#define MAX_URL_SIZE 2048
 
 // why use struct instead of just a socket_fd?
 // using a struct makes it easier to extend and add `connection: keep-alive` feature

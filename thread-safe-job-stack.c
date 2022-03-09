@@ -17,7 +17,7 @@ job_stack_t* job_stack_construct(unsigned int max_jobs, unsigned int reserve_slo
     pthread_cond_init(&(created->not_empty), NULL);
     pthread_cond_init(&(created->not_full), NULL);
     pthread_mutex_init(&(created->mutex), NULL);
-    created->finished = 0;
+    created->finished = false;
     created->max_job_count = max_jobs;
     created->reserve_job_count = reserve_slots;
     created->top = 0;
@@ -71,7 +71,7 @@ int job_stack_pop(job_stack_t* stack, job_t** ptr_out) {
 
 int job_stack_signal_finish(job_stack_t* stack) {
     pthread_mutex_lock(&(stack->mutex));
-    stack->finished = 1;
+    stack->finished = true;
     pthread_cond_broadcast(&(stack->not_empty));
     pthread_mutex_unlock(&(stack->mutex));
     return SUCCESS;

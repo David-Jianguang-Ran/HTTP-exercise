@@ -6,6 +6,7 @@
 #define NS_PA_2_THREAD_SAFE_JOB_STACK_H
 
 #include <pthread.h>
+#include <stdbool.h>
 #include "job.h"
 
 #define FINISHED -1
@@ -21,7 +22,7 @@ struct job_stack {
     pthread_mutex_t mutex;
     pthread_cond_t not_empty;
     pthread_cond_t not_full;
-    int finished;
+    bool finished;
 };
 typedef struct job_stack job_stack_t;
 
