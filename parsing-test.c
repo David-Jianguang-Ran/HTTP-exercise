@@ -186,12 +186,24 @@ int test_parse_request_string() {
            MALFORMED, version,
            -1, keep_alive);
 
+    strncpy(request_string, "GET /hang/on/I'm/not/done/with/this/lin", JOB_REQUEST_BUFFER_SIZE);
+    result = parse_request_string(request_string ,&is_get, url, &version, &keep_alive);
+    printf("---------case 11---------\n"
+           "expected  :  actual\n"
+           "return: %d : %d\n"
+           "GET: %d : %d\n"
+           "URL: %s : %s\n"
+           "version: %d : %d\n"
+           "keep alive: %d : %d\n"
+            , FAIL, result,
+           -1, is_get,
+           "???", url,
+           -1, version,
+           -1, keep_alive);
+
     return 0;
 }
 
 int main(int argc, char* argv[]) {
-
-
-
     return test_parse_request_string();
 }

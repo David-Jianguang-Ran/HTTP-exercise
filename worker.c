@@ -15,7 +15,7 @@
 #include "worker.h"
 
 
-int process_job(job_t* current_job) {
+int process_job(job_t* current_job, struct resource_info* resource) {
     int ret_status;
     bool request_is_get;
     char request_url[MAX_URL_SIZE + 1];
@@ -27,16 +27,16 @@ int process_job(job_t* current_job) {
 
     // discard expired jobs
     if (current_job->expiration_time > (unsigned int) time(NULL)) {
-        return FINISHED;
+        return TERMINATE;
     }
 
     // try to non-blocking read from TCP stream
     ret_status = recv(current_job->socket_fd, current_job->request + current_job->request_tail,
                       JOB_REQUEST_BUFFER_SIZE - current_job->request_tail, MSG_DONTWAIT);
     if (ret_status == -1) {  // no data available, push job back onto the stack
-        return SUCCESS;
+        return ENQUEUE;
     } else if (ret_status == 0) {  // connection closed
-        return FINISHED;
+        return TERMINATE;
     } else {
         current_job->request_tail += ret_status;
         current_job->expiration_time = (unsigned int) time(NULL) + KEEP_ALIVE_TIMEOUT;
@@ -44,18 +44,23 @@ int process_job(job_t* current_job) {
 
     ret_status = parse_request_string(current_job->request, &request_is_get, request_url,
                                       &request_version, &request_keep_alive);
+    if (ret_status == FAIL && current_job->request_tail == (JOB_REQUEST_BUFFER_SIZE - 1)) {
+        request_version = MALFORMED;  // no CRLF found and buffer filled, Bad Request, Bad!
+    } else if (ret_status == FAIL) {
+        return ENQUEUE;  // no CRLF found, re-enqueue and wait for more data (possible Slow Loris)
+    }
 
     // build response header first line
     if (request_version == MALFORMED) {
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 400 Bad Request\r\n");
-        // REMEMBER TO SEND
-        return FINISHED;
+        ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+        return TERMINATE;
     } else if (request_version == NOT_SUPPORTED) {
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 505 HTTP Version Not Supported\r\n");
-        // REMEMBER TO SEND
-        return FINISHED;
+        ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+        return TERMINATE;
     } else if (request_version == DOT_ZERO) {
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.0 ");
@@ -93,15 +98,18 @@ int process_job(job_t* current_job) {
     if (requested_file != NULL) {
         // build additional header
         // send file over the wire
-    } else {
-        // send over the wire
+    } else {  // send over already built response
+        ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+        if (ret_status == FAIL) {
+            return TERMINATE;
+        }
     }
 
     if (request_keep_alive) {
         current_job->expiration_time = (unsigned int) time(NULL) + KEEP_ALIVE_TIMEOUT;
-        return SUCCESS;
+        return ENQUEUE;
     } else {
-        return FINISHED;
+        return TERMINATE;
     }
 }
 
@@ -208,4 +216,29 @@ int matches_command_case_insensitive(char* target, char* command) {
 void copy_into_buffer(char* target, int* target_tail, char* content) {
     strcpy(target, content);
     *target_tail += strlen(content);
+}
+
+int try_send_in_chunks(int socket_fd, char* buffer, int length) {
+    int ret_status;
+    int bytes_sent;
+    char garbage_buffer[10];
+
+    bytes_sent = 0;
+    while (bytes_sent < length) {
+
+        // first see if client is still there
+        ret_status = recv(socket_fd, garbage_buffer, 9, MSG_PEEK | MSG_DONTWAIT);
+        if (ret_status == 0) {
+            return FAIL;
+        }
+        // do send based on what's already sent;
+        ret_status = send(socket_fd, buffer + bytes_sent, length - bytes_sent, 0);
+        if (ret_status == -1) {
+            // not sure what will cause this,
+            // it's my understanding that if client is not there the whole process just get killed
+            return FAIL;
+        }
+        bytes_sent += ret_status;
+    }
+    return SUCCESS;
 }

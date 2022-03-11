@@ -59,8 +59,14 @@ int main(int argc, char* argv[]) {
         connected_fd = accept(listener_socket_fd, (struct sockaddr*)&client_sock, &client_sock_len);
         while (connected_fd != -1) {
             printf("\n--------------\n");
-//            ret_status = send(connected_fd, "hello from server\n", strlen("hello from server\n"), 0);
-            printf("socket:%d sent bytes:%d\n", connected_fd, ret_status);
+            ret_status = send(connected_fd, "hello from server\n", strlen("hello from server\n"), 0);
+            if (ret_status == -1) {
+                printf("send failed error : %s\n", strerror(errno));
+                break;
+            } else {
+                printf("socket:%d sent bytes:%d\n", connected_fd, ret_status);
+            }
+
 
             ret_status = recv(connected_fd, buffer, MAX_BUFFER_SIZE, MSG_DONTWAIT);
             buffer[ret_status] = '\0';

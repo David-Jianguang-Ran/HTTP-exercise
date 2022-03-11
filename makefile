@@ -3,6 +3,9 @@ directory-structure:
 	test -d "./executables/www" || mkdir "./executables/www"
 
 experiments: directory-structure
-	gcc -Wall -o ./executables/new-line-test new-line-char-test.c
-	gcc -Wall -o ./executables/closed-socket-test closed-socket-test.c
-	gcc -Wall -o ./executables/worker-test worker-test.c
+	gcc -Wall -o ./executables/new-line-experiment new-line-char-experiment.c
+	gcc -Wall -o ./executables/closed-socket-experiment closed-socket-experiment.c
+
+tests: directory-structure
+	gcc -Wall -o ./executables/parsing-test parsing-test.c
+	gcc -Wall -o ./executables/send-recv-test send-recv-test.c

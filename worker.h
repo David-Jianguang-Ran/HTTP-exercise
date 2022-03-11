@@ -11,6 +11,9 @@
 
 #define KEEP_ALIVE_TIMEOUT 10
 
+#define TERMINATE 10  // should these be an enum?
+#define ENQUEUE 11
+
 struct resource_info {
     int thread_id;
     job_stack_t* job_stack;
@@ -27,7 +30,7 @@ struct resource_info create_shared_resource();
 int free_shared_resource(struct resource_info* ptr_to_resource);
 
 int worker_main(struct resource_info* resource);
-int process_job(job_t* current_job);
+int process_job(job_t* current_job, struct resource_info* resource);
 // request string must be null terminated or face UNDEFINED CONSEQUENCES!!
 int parse_request_string(char* request_string, bool* is_GET, char* url, enum http_version* version, bool* keep_alive);
 
@@ -35,6 +38,9 @@ int matches_command(char* target, char* command);
 int matches_command_case_insensitive(char* target, char* command);
 // this function DOES NOT check str boundary
 void copy_into_buffer(char* target, int* target_tail, char* content);
+// returns SUCCESS after all up to length is sent
+// returns FAIl if connection is already closed
+int try_send_in_chunks(int socket_fd, char* buffer, int length);
 
 
 #endif //NS_PA_2_WORKER_H
