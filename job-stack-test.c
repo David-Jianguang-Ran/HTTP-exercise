@@ -7,13 +7,11 @@
 #include <memory.h>
 #include <pthread.h>
 
-#define DEBUG 1
 
 #include "thread-safe-job-stack.h"
 #include "thread-safe-file.h"
 
-#define THREADS 5
-#define JOBS 10
+
 
 struct heap_obj {
     int var;
@@ -31,30 +29,45 @@ void* thread_main(void* arg) {
         ret_status = job_stack_pop(job_stack, &current_job);
         if (ret_status == FINISHED) {
             return NULL;
-        } else if (ret_status == SUCCESS) {
+        } else if (ret_status == SUCCESS && current_job->request_tail == 0) {
             job_destruct(current_job);
+        } else if (ret_status == SUCCESS) {
+            current_job->request_tail--;
+            job_stack_push_back(job_stack, current_job);
         }
     }
 }
 
 int main(int argc, char* argv[]) {
     int i;
-    pthread_t threads[THREADS];
+    int thread_count;
+    int jobs;
+    int stack_size;
     int ret_status;
     job_stack_t* job_stack;
     job_t* new_job;
 
     srand(time(NULL));
 
-    job_stack = job_stack_construct(JOBS / 4,THREADS);
+    if (argc != 4) {
+        printf("usage: %s <#jobs> <#threads> <stack-size>\n", argv[0]);
+        return 1;
+    }
+    jobs = atoi(argv[1]);
+    thread_count = atoi(argv[2]);
+    stack_size = atoi(argv[3]);
 
+    job_stack = job_stack_construct(stack_size,thread_count);
 
-    for (i = 0; i < THREADS; i++) {
+    pthread_t threads[thread_count];
+    for (i = 0; i < thread_count; i++) {
         pthread_create(&threads[i], NULL, thread_main, job_stack);
     }
 
-    for (i = 0; i < JOBS; i++) {
+    // push jobs onto stack
+    for (i = 0; i < jobs; i++) {
         new_job = job_construct(i + 100);
+        new_job->request_tail = rand() % 4;
         ret_status = FAIL;
         while (ret_status == FAIL) {
             ret_status = job_stack_push(job_stack, new_job);
@@ -63,7 +76,7 @@ int main(int argc, char* argv[]) {
 
     ret_status = job_stack_signal_finish(job_stack);
 
-    for (i = 0; i < THREADS; i++) {
+    for (i = 0; i < thread_count; i++) {
         pthread_join(threads[i], NULL);
     }
 

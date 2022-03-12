@@ -48,7 +48,7 @@ int job_stack_push(job_stack_t* stack, job_t* ptr_in) {
     }
     job_stack_set_item(stack, stack->top, ptr_in);
     stack->top++;
-    if (DEBUG) printf("pushed: %p, top: %d\n", job_stack_get_item(stack, stack->top - 1), stack->top);
+    if (DEBUG) printf("    pushed: %p\n", job_stack_get_item(stack, stack->top - 1));
     pthread_cond_signal(&(stack->not_empty));
     pthread_mutex_unlock(&(stack->mutex));
     return SUCCESS;
@@ -57,6 +57,7 @@ int job_stack_push(job_stack_t* stack, job_t* ptr_in) {
 int job_stack_push_back(job_stack_t* stack, job_t* ptr_in) {
     int i;
     if (stack->finished) {
+        if (DEBUG) printf("    push back %p, FAIL\n", job_stack_get_item(stack, 0));
         return FAIL;
     }
     pthread_mutex_lock(&(stack->mutex));
@@ -67,6 +68,7 @@ int job_stack_push_back(job_stack_t* stack, job_t* ptr_in) {
     }
     stack->top++;
     job_stack_set_item(stack, 0, ptr_in);
+    if (DEBUG) printf("    push back %p, top: %d\n", job_stack_get_item(stack, 0), stack->top);
     pthread_cond_signal(&(stack->not_empty));
     pthread_mutex_unlock(&(stack->mutex));
     return SUCCESS;
@@ -86,7 +88,7 @@ int job_stack_pop(job_stack_t* stack, job_t** ptr_out) {
     }
     *ptr_out = job_stack_get_item(stack, stack->top - 1);
     stack->top--;
-    if (DEBUG) printf("popped: %p\n", job_stack_get_item(stack, stack->top));
+    if (DEBUG) printf("    popped: %p\n", job_stack_get_item(stack, stack->top));
     pthread_cond_signal(&(stack->not_full));
     pthread_mutex_unlock(&(stack->mutex));
     return SUCCESS;
