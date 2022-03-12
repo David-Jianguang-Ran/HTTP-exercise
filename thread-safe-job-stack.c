@@ -3,21 +3,22 @@
 //
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "thread-safe-job-stack.h"
 
 
-job_stack_t* job_stack_construct(unsigned int max_jobs, unsigned int reserve_slots) {
+job_stack_t* job_stack_construct(int max_jobs, int reserve_slots) {
     job_stack_t* created;
     created = malloc(sizeof(job_stack_t));
     if (created == NULL) {
         return created;
     }
-    created->content_base = malloc(max_jobs * sizeof(job_t));
+    created->content_base = malloc((max_jobs + reserve_slots + 1) * sizeof(job_t));
     pthread_cond_init(&(created->not_empty), NULL);
     pthread_cond_init(&(created->not_full), NULL);
     pthread_mutex_init(&(created->mutex), NULL);
-    created->finished = false;
+    created->finished = 0;
     created->max_job_count = max_jobs;
     created->reserve_job_count = reserve_slots;
     created->top = 0;
@@ -33,19 +34,39 @@ void job_stack_destruct(job_stack_t* to_free) {
 }
 
 int job_stack_push(job_stack_t* stack, job_t* ptr_in) {
+    pthread_mutex_lock(&(stack->mutex));
+    if (DEBUG) printf("push locked, top: %d, fin: %d\n", stack->top, stack->finished);
+    if (stack->finished) {
+        return FINISHED;
+    }
+    // if stack has more than max - reserve items,
+    // wait until a consumer has popped some off stack and try again
+    if (stack->top >= stack->max_job_count) {
+        pthread_cond_wait(&(stack->not_full), &(stack->mutex));
+        pthread_mutex_unlock(&(stack->mutex));
+        return FAIL;
+    }
+    job_stack_set_item(stack, stack->top, ptr_in);
+    stack->top++;
+    if (DEBUG) printf("pushed: %p, top: %d\n", job_stack_get_item(stack, stack->top - 1), stack->top);
+    pthread_cond_signal(&(stack->not_empty));
+    pthread_mutex_unlock(&(stack->mutex));
+    return SUCCESS;
+}
+
+int job_stack_push_back(job_stack_t* stack, job_t* ptr_in) {
+    int i;
     if (stack->finished) {
         return FAIL;
     }
     pthread_mutex_lock(&(stack->mutex));
-    // if stack has more than max - reserve items,
-    // wait until a consumer has popped some off stack and try again
-    if (stack->top >= (stack->max_job_count - stack->reserve_job_count)) {
-        pthread_cond_wait(&(stack->not_full), &(stack->mutex));
-        pthread_mutex_unlock(&(stack->mutex));  // TODO : is there a way to avoid unlock than lock again in recursive call?
-        return job_stack_push(stack, ptr_in);
+    // push_back shouldn't need to wait for space
+    // push ptr_in to the bottom of stack, first move all existing items up one
+    for (i = stack->top; i > 0; i--) {
+        job_stack_set_item(stack, i, job_stack_get_item(stack, i - 1));
     }
-    job_stack_get_item(stack, stack->top) = ptr_in;
     stack->top++;
+    job_stack_set_item(stack, 0, ptr_in);
     pthread_cond_signal(&(stack->not_empty));
     pthread_mutex_unlock(&(stack->mutex));
     return SUCCESS;
@@ -53,30 +74,37 @@ int job_stack_push(job_stack_t* stack, job_t* ptr_in) {
 
 int job_stack_pop(job_stack_t* stack, job_t** ptr_out) {
     pthread_mutex_lock(&(stack->mutex));
+    if (DEBUG) printf("pop locked, top: %d, fin: %d\n", stack->top, stack->finished);
     // unless finished, wait until some job has been pushed onto stack and try to pop again
-    if (stack->top == 0 && !stack->finished) {
+    if (stack->top == 0 && stack->finished == 0) {
         pthread_cond_wait(&(stack->not_empty), &(stack->mutex));
         pthread_mutex_unlock(&(stack->mutex));
-        return job_stack_pop(stack, ptr_out);
+        return FAIL;
     } else if (stack->top == 0) {
         pthread_mutex_unlock(&(stack->mutex));
         return FINISHED;
     }
-    *ptr_out = job_stack_get_item(stack, stack->top);
+    *ptr_out = job_stack_get_item(stack, stack->top - 1);
     stack->top--;
-    pthread_cond_signal(&(stack->not_empty));
+    if (DEBUG) printf("popped: %p\n", job_stack_get_item(stack, stack->top));
+    pthread_cond_signal(&(stack->not_full));
     pthread_mutex_unlock(&(stack->mutex));
     return SUCCESS;
 }
 
 int job_stack_signal_finish(job_stack_t* stack) {
     pthread_mutex_lock(&(stack->mutex));
-    stack->finished = true;
+    if (DEBUG) printf("finish signal issued\n");
+    stack->finished = 1;
     pthread_cond_broadcast(&(stack->not_empty));
     pthread_mutex_unlock(&(stack->mutex));
     return SUCCESS;
 }
 
-job_t* job_stack_get_item(job_stack_t* stack, unsigned int index) {
-    return *(stack->content_base + index)
+job_t* job_stack_get_item(job_stack_t* stack, int index) {
+    return *(stack->content_base + index);
+}
+
+void job_stack_set_item(job_stack_t* stack, int index, job_t* item) {
+    *(stack->content_base + index) = item;
 }

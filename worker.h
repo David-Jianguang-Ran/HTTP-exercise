@@ -5,6 +5,8 @@
 #ifndef NS_PA_2_WORKER_H
 #define NS_PA_2_WORKER_H
 
+#include <stdbool.h>
+
 #include "job.h"
 #include "thread-safe-file.h"
 #include "thread-safe-job-stack.h"

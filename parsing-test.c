@@ -3,8 +3,9 @@
 // Created by dran on 3/8/22.
 //
 
+#include <string.h>
 
-#include "worker.c"
+#include "worker.h"
 
 
 int test_parse_request_string() {

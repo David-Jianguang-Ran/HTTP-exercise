@@ -14,7 +14,7 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "worker.c"
+#include "worker.h"
 
 #define MAX_BUFFER_SIZE 1024
 #define DEBUG 1

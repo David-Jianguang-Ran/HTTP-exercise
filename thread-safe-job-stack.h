@@ -6,42 +6,46 @@
 #define NS_PA_2_THREAD_SAFE_JOB_STACK_H
 
 #include <pthread.h>
-#include <stdbool.h>
 #include "job.h"
 
 #define FINISHED -1
 #define SUCCESS 0
 #define FAIL 1
 
+#define DEBUG 1
 
 struct job_stack {
     job_t** content_base;
-    unsigned int top;
-    unsigned int max_job_count;
-    unsigned int reserve_job_count;
+    int top;
+    int max_job_count;
+    int reserve_job_count;
     pthread_mutex_t mutex;
     pthread_cond_t not_empty;
     pthread_cond_t not_full;
-    bool finished;
+    int finished;
+    int f2;
 };
 typedef struct job_stack job_stack_t;
 
-
 // the # of reserve_slots must be greater than # of consumers that also want to produce sometimes
-job_stack_t* job_stack_construct(unsigned int max_jobs, unsigned int reserve_slots);
+job_stack_t* job_stack_construct(int max_jobs, int reserve_slots);
 // job stack MUST BE empty before calling destruct
 void job_stack_destruct(job_stack_t* to_free);
 
 // this function is used for push new jobs onto stack, should be used by job producers
 // will block until stack has less than (max - reserve) items
 int job_stack_push(job_stack_t* stack, job_t* ptr_in);
+// TODO : upgrade this object to a priority queue based on job->expiration_time
 // this function should be used by job consumers that sometimes have to produce too
 // this function is for pushing existing jobs back onto stack
 // pushes to the bottom of stack
 int job_stack_push_back(job_stack_t* stack, job_t* ptr_in);
+// this function returns FINISHED `job_stack_signal_finish` has been called
+// otherwise it will block until return SUCCESS
 int job_stack_pop(job_stack_t* stack, job_t** ptr_out);
 int job_stack_signal_finish(job_stack_t* stack);
 
-job_t* job_stack_get_item(job_stack_t* stack, unsigned int index);
+job_t* job_stack_get_item(job_stack_t* stack, int index);
+void job_stack_set_item(job_stack_t* stack, int index, job_t* ptr_in);
 
 #endif //NS_PA_2_THREAD_SAFE_JOB_STACK_H

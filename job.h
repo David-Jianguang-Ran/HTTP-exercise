@@ -16,7 +16,7 @@ struct job_info {
     int socket_fd;
     char request[JOB_REQUEST_BUFFER_SIZE + 1];
     int request_tail;
-    unsigned int expiration_time;
+    unsigned long expiration_time;
 };
 typedef struct job_info job_t;
 
