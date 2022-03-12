@@ -16,6 +16,8 @@
 #define TERMINATE 10  // should these be an enum?
 #define ENQUEUE 11
 
+#define DOCUMENT_ROOT "./www"
+
 struct resource_info {
     int thread_id;
     job_stack_t* job_stack;
@@ -38,6 +40,13 @@ int parse_request_string(char* request_string, bool* is_GET, char* url, enum htt
 
 int matches_command(char* target, char* command);
 int matches_command_case_insensitive(char* target, char* command);
+// this function trys to look up the requested resource
+// and fill appropriate response into buffer
+// including content type and content length
+// will try to add .html or .htm to url if url is an directory
+// if not found or forbidden, a nullptr will be returned
+// else an open file
+FILE* fill_content_info(char* out_going_buffer, int* out_going_buffer_tail, char* url);
 // this function DOES NOT check str boundary
 void copy_into_buffer(char* target, int* target_tail, char* content);
 // returns SUCCESS after all up to length is sent

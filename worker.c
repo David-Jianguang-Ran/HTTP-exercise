@@ -8,8 +8,9 @@
 #include <errno.h>
 #include <time.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
-#include <pthread.h>
+
 
 #include "worker.h"
 
@@ -68,21 +69,13 @@ int process_job(job_t* current_job, struct resource_info* resource) {
                          "HTTP/1.1 ");
     }
 
+    // try to open file for GET and or build response
     if (!request_is_get) {
         copy_into_buffer(response_buffer, &response_tail,
                          "405 Method Not Allowed\r\n");
-    }
-
-    requested_file = fopen(request_url, "rb");
-    if (requested_file == NULL && errno == ENOENT) {
-        copy_into_buffer(response_buffer, &response_tail,
-                         "404 Not Found\r\n");
-    } else if (requested_file == NULL) {
-        copy_into_buffer(response_buffer, &response_tail,
-                         "403 Forbidden\r\n");
+        requested_file = NULL;
     } else {
-        copy_into_buffer(response_buffer, &response_tail,
-                         "200 OK\r\n");
+        requested_file = fill_content_info(response_buffer,&response_tail, request_url);
     }
 
     // additional response headers
@@ -94,13 +87,27 @@ int process_job(job_t* current_job, struct resource_info* resource) {
                          "Connection: close\r\n");
     }
 
+    // send the response we've built over
+    ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+    if (ret_status == FAIL) {
+        safe_write(resource->std_out,"Failed to send to client\n");
+        return TERMINATE;
+    }
+
     if (requested_file != NULL) {
-        // build additional header
-        // send file over the wire
-    } else {  // send over already built response
-        ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
-        if (ret_status == FAIL) {
-            return TERMINATE;
+        // clear buffer and start sending over the file
+        memset(response_buffer, '\0', JOB_REQUEST_BUFFER_SIZE);
+        response_tail = 0;
+        copy_into_buffer(response_buffer, &response_tail,
+                         "\r\n");
+        ret_status = fread(response_buffer + response_tail, sizeof(char), JOB_REQUEST_BUFFER_SIZE - response_tail, requested_file);
+        if (ret_status != 0) {
+            response_tail += ret_status;
+            ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+            if (ret_status == FAIL) {
+                safe_write(resource->std_out,"Failed to send to client\n");
+                return TERMINATE;
+            }
         }
     }
 
@@ -116,6 +123,7 @@ int parse_request_string(char* working_request, bool* is_get, char* url, enum ht
     char* end_of_first_line;
     char* divider_a;
     char* divider_b;
+    char* end_of_url;
 
     // will not parse request line unless there is a complete line
     end_of_first_line = strchr(working_request, '\n');
@@ -179,6 +187,11 @@ int parse_request_string(char* working_request, bool* is_get, char* url, enum ht
         return SUCCESS;
     } else {
         strncpy(url, divider_a, MAX_URL_SIZE);
+        // strip the last char if it is '/', except when url is "/"
+        end_of_url = strrchr(url, '/');
+        if (end_of_url != url && (end_of_url + 1) == strrchr(url, '\0')) {
+            *end_of_url = '\0';
+        }
     }
 
     *end_of_first_line = '\n';
@@ -212,8 +225,92 @@ int matches_command_case_insensitive(char* target, char* command) {
     }
 }
 
+FILE* fill_content_info(char* response_buffer, int* response_tail, char* url) {
+    int ret_status;
+    char file_path[JOB_REQUEST_BUFFER_SIZE + 1];
+    FILE* requested_file;
+    struct stat file_stats;
+    char* file_name_start;
+    char* file_extension_start;
+
+    file_name_start = strrchr(url, '/');
+    file_extension_start = strrchr(file_name_start, '.');
+    if (file_extension_start == NULL) {  // url is a directory, try to open url/index.html or url/index.htm
+        sprintf(file_path, "%s%s/index.html", DOCUMENT_ROOT, url);
+        ret_status = stat(file_path, &file_stats);
+        if ((ret_status == -1) && (errno == ENOENT)) {
+            sprintf(file_path, "%s%s/index.htm", DOCUMENT_ROOT, url);
+            ret_status = stat(file_path, &file_stats);
+            if ((ret_status == -1) && (errno == ENOENT)) {
+                copy_into_buffer(response_buffer, response_tail,
+                         "404 Not Found\r\n");
+                return NULL;
+            } else if ((ret_status == -1) && (errno == EACCES)) {
+                copy_into_buffer(response_buffer, response_tail,
+                                 "405 Forbidden\r\n");
+                return NULL;
+            }
+        } else if ((ret_status == -1) && (errno == EACCES)) {
+            copy_into_buffer(response_buffer, response_tail,
+                             "405 Forbidden\r\n");
+            return NULL;
+        }
+    } else {  // try to get file stats on requested file
+        sprintf(file_path, "%s%s", DOCUMENT_ROOT, url);
+        ret_status = stat(file_path, &file_stats);
+        if ((ret_status == -1) && (errno == ENOENT)) {
+            copy_into_buffer(response_buffer, response_tail,
+                             "404 Not Found\r\n");
+            return NULL;
+        } else if ((ret_status == -1) && (errno == EACCES)) {
+            copy_into_buffer(response_buffer, response_tail,
+                             "405 Forbidden\r\n");
+            return NULL;
+        }
+    }
+
+    // try to open file
+    requested_file = fopen(file_path, "rb");
+    if (requested_file == NULL) {
+        // 405 because we know file stat exist
+        copy_into_buffer(response_buffer, response_tail,
+                         "405 Forbidden\r\n");
+        return NULL;
+    } else {
+        copy_into_buffer(response_buffer, response_tail,
+                         "200 OK\r\n");
+    }
+
+    if (matches_command(file_extension_start, ".html")) {
+        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/html\r\n");
+    } else if (matches_command(file_extension_start, ".txt")) {
+        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/plain\r\n");
+    } else if (matches_command(file_extension_start, ".png")) {
+        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/png\r\n");
+    } else if (matches_command(file_extension_start, ".gif")) {
+        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/gif\r\n");
+    } else if (matches_command(file_extension_start, ".jpg")) {
+        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/jpg\r\n");
+    } else if (matches_command(file_extension_start, ".css")) {
+        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/css\r\n");
+    } else if (matches_command(file_extension_start, ".js")) {
+        copy_into_buffer(response_buffer, response_tail, "Content-Type: application/javascript\r\n");
+    } else {
+        // 405 or whatever better convey file type not supported
+        copy_into_buffer(response_buffer, response_tail,
+                         "405 Forbidden\r\n");
+        return NULL;
+    }
+
+    // add content length header
+    // borrowing file path buffer
+    sprintf(file_path, "Content-Length: %ld\r\n", file_stats.st_size);
+    copy_into_buffer(response_buffer, response_tail, file_path);
+    return requested_file;
+}
+
 void copy_into_buffer(char* target, int* target_tail, char* content) {
-    strcpy(target, content);
+    strcpy(target + *target_tail, content);  // TODO: address possible buffer overflow here
     *target_tail += strlen(content);
 }
 

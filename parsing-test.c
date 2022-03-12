@@ -202,6 +202,21 @@ int test_parse_request_string() {
            -1, version,
            -1, keep_alive);
 
+    strncpy(request_string, "GET /path/with/trailing/slash/ HTTP/1.1\r\n", JOB_REQUEST_BUFFER_SIZE);
+    result = parse_request_string(request_string ,&is_get, url, &version, &keep_alive);
+    printf("---------case 12---------\n"
+           "expected  :  actual\n"
+           "return: %d : %d\n"
+           "GET: %d : %d\n"
+           "URL: %s : %s\n"
+           "version: %d : %d\n"
+           "keep alive: %d : %d\n"
+            , SUCCESS, result,
+           1, is_get,
+           "/path/with/trailing/slash", url,
+           DOT_ONE, version,
+           0, keep_alive);
+
     return 0;
 }
 
