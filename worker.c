@@ -14,6 +14,30 @@
 
 #include "worker.h"
 
+void* worker_main(void* shared) {
+    struct resource_info* shared_resource;
+    int ret_status;
+    job_t* current_job;
+    shared_resource = (struct resource_info*) shared;
+
+    while (1) {
+        ret_status = job_stack_pop(shared_resource->job_stack, &current_job);
+        if (ret_status == FINISHED) {
+            return NULL;
+        } else if (ret_status == SUCCESS) {
+            ret_status = process_job(current_job, shared_resource);  // this is where most of the work is done
+            if (ret_status == TERMINATE) {
+                job_destruct(current_job);
+            } else {  // re-enqueue job, expire time already set during `process_job`
+                ret_status = job_stack_push_back(shared_resource->job_stack, current_job);
+                if (ret_status != SUCCESS) {
+                    job_destruct(current_job);
+                }
+            }
+        }
+    }
+
+}
 
 int process_job(job_t* current_job, struct resource_info* resource) {
     int ret_status;
@@ -54,12 +78,12 @@ int process_job(job_t* current_job, struct resource_info* resource) {
     if (request_version == MALFORMED) {
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 400 Bad Request\r\n");
-        ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+        try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
         return TERMINATE;
     } else if (request_version == NOT_SUPPORTED) {
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 505 HTTP Version Not Supported\r\n");
-        ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+        try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
         return TERMINATE;
     } else if (request_version == DOT_ZERO) {
         copy_into_buffer(response_buffer, &response_tail,
@@ -101,13 +125,17 @@ int process_job(job_t* current_job, struct resource_info* resource) {
         copy_into_buffer(response_buffer, &response_tail,
                          "\r\n");
         ret_status = fread(response_buffer + response_tail, sizeof(char), JOB_REQUEST_BUFFER_SIZE - response_tail, requested_file);
-        if (ret_status != 0) {
+        while (ret_status != 0) {
             response_tail += ret_status;
             ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
             if (ret_status == FAIL) {
                 safe_write(resource->std_out,"Failed to send to client\n");
                 return TERMINATE;
+            } else {
+                memset(response_buffer, '\0', JOB_REQUEST_BUFFER_SIZE);
+                response_tail = 0;
             }
+            ret_status = fread(response_buffer + response_tail, sizeof(char), JOB_REQUEST_BUFFER_SIZE - response_tail, requested_file);
         }
     }
 

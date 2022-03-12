@@ -33,11 +33,14 @@ struct resource_info create_shared_resource();
 // calling this frees all underlying resource, only need to call it once for multiple copies
 int free_shared_resource(struct resource_info* ptr_to_resource);
 
-int worker_main(struct resource_info* resource);
+void* worker_main(void* shared);
 int process_job(job_t* current_job, struct resource_info* resource);
 // request string must be null terminated or face UNDEFINED CONSEQUENCES!!
+// will remove trailing / from url, unless it's only a slash
 int parse_request_string(char* request_string, bool* is_GET, char* url, enum http_version* version, bool* keep_alive);
-
+// simple wrapper for strncmp, only match up to strlen(command)
+// all strings must be zero terminated
+// return 0 for no match, 1 for match
 int matches_command(char* target, char* command);
 int matches_command_case_insensitive(char* target, char* command);
 // this function trys to look up the requested resource
