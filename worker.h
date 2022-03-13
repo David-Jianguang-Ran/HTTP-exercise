@@ -28,11 +28,11 @@ enum http_version {MALFORMED, NOT_SUPPORTED, DOT_ZERO, DOT_ONE};
 
 // thread_id of returned is always -1 for main thread
 // copy and change to appropriate id before passing to workers
-struct resource_info create_shared_resource();
+// resource info is safe to copy and pass around
+struct resource_info create_shared_resource(int job_stack_size, int reserve_slots);
 // all worker threads MUST BE finished (joined) before freeing resource
 // calling this frees all underlying resource, only need to call it once for multiple copies
-int free_shared_resource(struct resource_info* ptr_to_resource);
-
+void free_shared_resource(struct resource_info* ptr_to_resource);
 void* worker_main(void* shared);
 int process_job(job_t* current_job, struct resource_info* resource);
 // request string must be null terminated or face UNDEFINED CONSEQUENCES!!

@@ -14,6 +14,19 @@
 
 #include "worker.h"
 
+struct resource_info create_shared_resource(int job_stack_size, int reserve_slots) {
+    struct resource_info created;
+    created.thread_id = -1;
+    created.job_stack = job_stack_construct(job_stack_size, reserve_slots);
+    created.std_out = safe_init(stdout);
+    return created;
+}
+
+void free_shared_resource(struct resource_info* ptr_to_resource) {
+    job_stack_destruct(ptr_to_resource->job_stack);
+    safe_close(ptr_to_resource->std_out);
+}
+
 void* worker_main(void* shared) {
     struct resource_info* shared_resource;
     int ret_status;
