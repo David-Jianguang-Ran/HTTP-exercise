@@ -1,10 +1,10 @@
 # PA2 - HTTP Server
 
 
-## what is the in make file?
+## what is in the makefile?
 
 - do `make server` to compile server executable. 
-The finished binary will be in ./executables the default document root is in ./executables/www
+The finished binary will be at ./executables/server the default document root is ./executables/www
 - there are some non-automated unit tests, do `make tests` to compile them.  
 - there are some small scale experiments I used to learn about the behaviour HTTP. do `make tests` to compile them.
 
