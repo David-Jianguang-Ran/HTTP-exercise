@@ -96,5 +96,6 @@ int main(int argc, char* argv[]) {
 
     close(listener_socket_fd);
     free_shared_resource(&worker_resource[0]);
+    safe_write(worker_resource[0].std_out, "Shutdown signal complete. Good Bye!\n");
     return 0;
 }

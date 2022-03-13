@@ -11,7 +11,8 @@
 
 #include "worker.h"
 
-#define DEBUG 0
+#define DEBUG 1
+#define DEBUG_THREADS 0
 
 #define PRINTOUT_BUFFER_SIZE 512
 
@@ -39,13 +40,13 @@ void* worker_main(void* shared) {
         if (ret_status == FINISHED) {
             return NULL;
         } else if (ret_status == SUCCESS) {
-            if (DEBUG) {
+            if (DEBUG_THREADS) {
                 sprintf(output_buffer, "<%d> socket:%d SERVICE START\n", shared_resource->thread_id, current_job->socket_fd);
                 safe_write(shared_resource->std_out, output_buffer);
             }
             ret_status = process_job(current_job, shared_resource);  // this is where most of the work is done
             if (ret_status == TERMINATE) {
-                if (DEBUG) {
+                if (DEBUG_THREADS) {
                     sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
                     safe_write(shared_resource->std_out, output_buffer);
                 }
@@ -53,13 +54,13 @@ void* worker_main(void* shared) {
             } else {  // re-enqueue job, expire time already set during `process_job`
                 ret_status = job_stack_push_back(shared_resource->job_stack, current_job);
                 if (ret_status != SUCCESS) {
-                    if (DEBUG) {
+                    if (DEBUG_THREADS) {
                         sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
                         safe_write(shared_resource->std_out, output_buffer);
                     }
                     job_destruct(current_job);
                 } else {
-                    if (DEBUG) {
+                    if (DEBUG_THREADS) {
                         sprintf(output_buffer, "<%d> socket:%d RE-ENQUEUE\n", shared_resource->thread_id, current_job->socket_fd);
                         safe_write(shared_resource->std_out, output_buffer);
                     }
@@ -83,7 +84,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
 
     // discard expired jobs
     if ((current_job->expiration_time != 0) && (current_job->expiration_time < (unsigned int) time(NULL))) {
-        if (1) {
+        if (DEBUG) {
             sprintf(output_buffer, "<%d> socket:%d Timed Out\n", shared_resource->thread_id, current_job->socket_fd);
             safe_write(shared_resource->std_out, output_buffer);
         }
@@ -110,12 +111,13 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         return ENQUEUE;  // no CRLF found, re-enqueue and wait for more data (possible Slow Loris)
     }
 
+    if (DEBUG && (request_version == MALFORMED || request_version == NOT_SUPPORTED || !request_is_get)) {
+        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n4xx response\n", shared_resource->thread_id, current_job->socket_fd, current_job->request);
+        safe_write(shared_resource->std_out, output_buffer);
+    }
+
     // build response header first line
     if (request_version == MALFORMED) {
-        if (1) {  // always printout bad_request
-            sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\nBad Request\n", shared_resource->thread_id, current_job->socket_fd, current_job->request);
-            safe_write(shared_resource->std_out, output_buffer);
-        }
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 400 Bad Request\r\n");
         try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
@@ -134,7 +136,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     if (1) {  // always printout first line of a valid request for inspection
-        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n", shared_resource->thread_id, current_job->socket_fd, current_job->request);
+        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\nKeep-Alive:%d\n", shared_resource->thread_id, current_job->socket_fd, current_job->request, request_keep_alive);
         safe_write(shared_resource->std_out, output_buffer);
     }
 
@@ -147,13 +149,18 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         requested_file = fill_content_info(response_buffer,&response_tail, request_url);
     }
 
+    if (DEBUG && requested_file == NULL) {
+        sprintf(output_buffer, "<%d> socket:%d failed-response:\n%s\n", shared_resource->thread_id, current_job->socket_fd, response_buffer);
+        safe_write(shared_resource->std_out, output_buffer);
+    }
+
     // additional response headers
     if (request_keep_alive) {
         copy_into_buffer(response_buffer, &response_tail,
-                         "Connection: keep-alive\r\n");
+                         "Connection: keep-alive\r\n\r\n");
     } else {
         copy_into_buffer(response_buffer, &response_tail,
-                         "Connection: close\r\n");
+                         "Connection: close\r\n\r\n");
     }
 
     // send the response we've built over
@@ -375,7 +382,7 @@ FILE* fill_content_info(char* response_buffer, int* response_tail, char* url) {
 
     // add content length header
     // borrowing file path buffer
-    sprintf(file_path, "Content-Length: %ld\r\n\r\n", file_stats.st_size);
+    sprintf(file_path, "Content-Length: %ld\r\n", file_stats.st_size);
     copy_into_buffer(response_buffer, response_tail, file_path);
     return requested_file;
 }
