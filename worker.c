@@ -2,17 +2,17 @@
 // Created by dran on 3/8/22.
 //
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
 #include <time.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <arpa/inet.h>
 
 
 #include "worker.h"
+
+#define PRINTOUT_BUFFER_SIZE 512
 
 struct resource_info create_shared_resource(int job_stack_size, int reserve_slots) {
     struct resource_info created;
@@ -28,23 +28,40 @@ void free_shared_resource(struct resource_info* ptr_to_resource) {
 }
 
 void* worker_main(void* shared) {
+    char output_buffer[PRINTOUT_BUFFER_SIZE];  // magic numbers are not great
     struct resource_info* shared_resource;
     int ret_status;
     job_t* current_job;
     shared_resource = (struct resource_info*) shared;
-
     while (1) {
         ret_status = job_stack_pop(shared_resource->job_stack, &current_job);
         if (ret_status == FINISHED) {
             return NULL;
         } else if (ret_status == SUCCESS) {
+            if (DEBUG) {
+                sprintf(output_buffer, "<%d> socket:%d SERVICE START\n", shared_resource->thread_id, current_job->socket_fd);
+                safe_write(shared_resource->std_out, output_buffer);
+            }
             ret_status = process_job(current_job, shared_resource);  // this is where most of the work is done
             if (ret_status == TERMINATE) {
+                if (DEBUG) {
+                    sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
+                    safe_write(shared_resource->std_out, output_buffer);
+                }
                 job_destruct(current_job);
             } else {  // re-enqueue job, expire time already set during `process_job`
                 ret_status = job_stack_push_back(shared_resource->job_stack, current_job);
                 if (ret_status != SUCCESS) {
+                    if (DEBUG) {
+                        sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
+                        safe_write(shared_resource->std_out, output_buffer);
+                    }
                     job_destruct(current_job);
+                } else {
+                    if (DEBUG) {
+                        sprintf(output_buffer, "<%d> socket:%d RE-ENQUEUE\n", shared_resource->thread_id, current_job->socket_fd);
+                        safe_write(shared_resource->std_out, output_buffer);
+                    }
                 }
             }
         }
@@ -52,18 +69,19 @@ void* worker_main(void* shared) {
 
 }
 
-int process_job(job_t* current_job, struct resource_info* resource) {
+int process_job(job_t* current_job, struct resource_info* shared_resource) {
     int ret_status;
     bool request_is_get;
     char request_url[MAX_URL_SIZE + 1];
     enum http_version request_version;
     bool request_keep_alive;
+    char output_buffer[PRINTOUT_BUFFER_SIZE + JOB_REQUEST_BUFFER_SIZE];
     char response_buffer[JOB_REQUEST_BUFFER_SIZE + 1];
     int response_tail;
     FILE* requested_file;
 
     // discard expired jobs
-    if (current_job->expiration_time > (unsigned int) time(NULL)) {
+    if ((current_job->expiration_time != 0) && (current_job->expiration_time < (unsigned int) time(NULL))) {
         return TERMINATE;
     }
 
@@ -106,6 +124,11 @@ int process_job(job_t* current_job, struct resource_info* resource) {
                          "HTTP/1.1 ");
     }
 
+    if (DEBUG) {
+        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n", shared_resource->thread_id, current_job->socket_fd, current_job->request);
+        safe_write(shared_resource->std_out, output_buffer);
+    }
+
     // try to open file for GET and or build response
     if (!request_is_get) {
         copy_into_buffer(response_buffer, &response_tail,
@@ -127,7 +150,7 @@ int process_job(job_t* current_job, struct resource_info* resource) {
     // send the response we've built over
     ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
     if (ret_status == FAIL) {
-        safe_write(resource->std_out,"Failed to send to client\n");
+        safe_write(shared_resource->std_out,"Failed to send to client\n");
         return TERMINATE;
     }
 
@@ -142,7 +165,7 @@ int process_job(job_t* current_job, struct resource_info* resource) {
             response_tail += ret_status;
             ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
             if (ret_status == FAIL) {
-                safe_write(resource->std_out,"Failed to send to client\n");
+                safe_write(shared_resource->std_out,"Failed to send to client\n");
                 return TERMINATE;
             } else {
                 memset(response_buffer, '\0', JOB_REQUEST_BUFFER_SIZE);
@@ -171,7 +194,6 @@ int parse_request_string(char* working_request, bool* is_get, char* url, enum ht
     if (end_of_first_line == NULL) {
         return FAIL;
     }
-
     // parse request line
     // starting with http version
     *end_of_first_line = '\0';
@@ -235,7 +257,7 @@ int parse_request_string(char* working_request, bool* is_get, char* url, enum ht
         }
     }
 
-    *end_of_first_line = '\n';
+    // *end_of_first_line = '\n';
     // parse any request headers
     *keep_alive = false;
     divider_a = end_of_first_line + 1;

@@ -11,12 +11,13 @@
 #include "thread-safe-file.h"
 #include "thread-safe-job-stack.h"
 
-#define KEEP_ALIVE_TIMEOUT 10
-
 #define TERMINATE 10  // should these be an enum?
 #define ENQUEUE 11
+#define DEBUG 1
 
+#define KEEP_ALIVE_TIMEOUT 10
 #define DOCUMENT_ROOT "./www"
+
 
 struct resource_info {
     int thread_id;
