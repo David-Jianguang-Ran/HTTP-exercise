@@ -12,8 +12,6 @@
 #define SUCCESS 0
 #define FAIL 1
 
-#define DEBUG 1
-
 struct job_stack {
     job_t** content_base;
     int top;
@@ -23,7 +21,6 @@ struct job_stack {
     pthread_cond_t not_empty;
     pthread_cond_t not_full;
     int finished;
-    int f2;
 };
 typedef struct job_stack job_stack_t;
 
@@ -33,18 +30,19 @@ job_stack_t* job_stack_construct(int max_jobs, int reserve_slots);
 void job_stack_destruct(job_stack_t* to_free);
 
 // this function is used for push new jobs onto stack, should be used by job producers
-// will block until stack has less than (max - reserve) items
+// will block until stack has less than `max_job_count` items
 int job_stack_push(job_stack_t* stack, job_t* ptr_in);
 // TODO : upgrade this object to a priority queue based on job->expiration_time
 // this function should be used by job consumers that sometimes have to produce too
+// there is no wait for push, there will always be space in the reserve_slots
 // this function is for pushing existing jobs back onto stack
 // pushes to the bottom of stack
 int job_stack_push_back(job_stack_t* stack, job_t* ptr_in);
 // this function returns FINISHED `job_stack_signal_finish` has been called
-// otherwise it will block until return SUCCESS
 int job_stack_pop(job_stack_t* stack, job_t** ptr_out);
 int job_stack_signal_finish(job_stack_t* stack);
 
+// private functions below
 job_t* job_stack_get_item(job_stack_t* stack, int index);
 void job_stack_set_item(job_stack_t* stack, int index, job_t* ptr_in);
 

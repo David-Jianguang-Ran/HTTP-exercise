@@ -11,7 +11,6 @@
 
 // why use struct instead of just a socket_fd?
 // using a struct makes it easier to extend and add `connection: keep-alive` feature
-// TODO : maybe i should put a request char buffer here, this way slow loris requests can just be popped back onto the stack for later
 struct job_info {
     int socket_fd;
     char request[JOB_REQUEST_BUFFER_SIZE + 1];

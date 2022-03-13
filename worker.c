@@ -9,8 +9,9 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-
 #include "worker.h"
+
+#define DEBUG 1
 
 #define PRINTOUT_BUFFER_SIZE 512
 
@@ -28,7 +29,7 @@ void free_shared_resource(struct resource_info* ptr_to_resource) {
 }
 
 void* worker_main(void* shared) {
-    char output_buffer[PRINTOUT_BUFFER_SIZE];  // magic numbers are not great
+    char output_buffer[PRINTOUT_BUFFER_SIZE];
     struct resource_info* shared_resource;
     int ret_status;
     job_t* current_job;
@@ -124,7 +125,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
                          "HTTP/1.1 ");
     }
 
-    if (DEBUG) {
+    if (1) {  // always printout first line of a valid request for inspection
         sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n", shared_resource->thread_id, current_job->socket_fd, current_job->request);
         safe_write(shared_resource->std_out, output_buffer);
     }
@@ -154,24 +155,22 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         return TERMINATE;
     }
 
-    if (requested_file != NULL) {
+    while (requested_file != NULL) {
         // clear buffer and start sending over the file
         memset(response_buffer, '\0', JOB_REQUEST_BUFFER_SIZE);
         response_tail = 0;
-        copy_into_buffer(response_buffer, &response_tail,
-                         "\r\n");
         ret_status = fread(response_buffer + response_tail, sizeof(char), JOB_REQUEST_BUFFER_SIZE - response_tail, requested_file);
-        while (ret_status != 0) {
+        if (ret_status == 0) {  // got a EOF
+            fclose(requested_file);
+            requested_file = NULL;
+        } else {  // send buffer down the wire
             response_tail += ret_status;
             ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
             if (ret_status == FAIL) {
                 safe_write(shared_resource->std_out,"Failed to send to client\n");
+                fclose(requested_file);
                 return TERMINATE;
-            } else {
-                memset(response_buffer, '\0', JOB_REQUEST_BUFFER_SIZE);
-                response_tail = 0;
             }
-            ret_status = fread(response_buffer + response_tail, sizeof(char), JOB_REQUEST_BUFFER_SIZE - response_tail, requested_file);
         }
     }
 
@@ -367,7 +366,7 @@ FILE* fill_content_info(char* response_buffer, int* response_tail, char* url) {
 
     // add content length header
     // borrowing file path buffer
-    sprintf(file_path, "Content-Length: %ld\r\n", file_stats.st_size);
+    sprintf(file_path, "Content-Length: %ld\r\n\r\n", file_stats.st_size);
     copy_into_buffer(response_buffer, response_tail, file_path);
     return requested_file;
 }

@@ -3,12 +3,13 @@
 //
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <errno.h>
-#include <time.h>
+#include <signal.h>
+#include <unistd.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
+#include <arpa/inet.h>
 
 #include "worker.h"
 
@@ -18,39 +19,47 @@
 int SHOULD_SHUTDOWN;
 
 // TODO : add kill signal handler
+void shutdown_signal_handler(int sig_num) {
+    SHOULD_SHUTDOWN = 1;
+}
+
 
 int main(int argc, char* argv[]) {
     int ret_status;
-    int listener_socket_fd;
-    int connected_fd;
-    struct sockaddr_in client_sock;
-    socklen_t client_sock_len;
-    struct sockaddr_in server_sock;
-    socklen_t server_sock_len;
 
     if (argc != 2) {
         printf("usage: %s <port>\n", argv[0]);
         return 1;
     }
 
+    // custom shutdown signal handling
+    struct sigaction new_action;
+
+    memset(&new_action, 0, sizeof(struct sigaction));
+    new_action.sa_handler = shutdown_signal_handler;
+    sigaction(SIGTERM, &new_action, NULL);
+    sigaction(SIGINT, &new_action, NULL);
+
     // create main listener socket
+    int listener_socket_fd;
+    int connected_fd;
+    struct sockaddr_in server_sock;
+    socklen_t server_sock_len;
+
     listener_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listener_socket_fd == -1) {
         printf("error: unable to create socket\n");
         return 1;
     }
-
     server_sock.sin_family = AF_INET;
     server_sock.sin_addr.s_addr = htonl(INADDR_ANY);
     server_sock.sin_port = htons(atoi(argv[1]));
     server_sock_len = sizeof(struct sockaddr_in);
-
     ret_status = bind(listener_socket_fd, (struct sockaddr *) &server_sock, server_sock_len);
     if (ret_status != SUCCESS) {
         printf("error: unable to bind to port %d", atoi(argv[1]));
         return 1;
     }
-
 
     // spawn workers
     pthread_t workers[THREADS];
@@ -84,6 +93,7 @@ int main(int argc, char* argv[]) {
         pthread_join(workers[i], NULL);
     }
 
+    close(listener_socket_fd);
     free_shared_resource(&worker_resource[0]);
     return 0;
 }

@@ -7,6 +7,8 @@
 
 #include "thread-safe-job-stack.h"
 
+#define DEBUG 0
+
 
 job_stack_t* job_stack_construct(int max_jobs, int reserve_slots) {
     job_stack_t* created;

@@ -1,5 +1,8 @@
 modules = thread-safe-job-stack.c thread-safe-file.c job.c
 
+server: directory-structure
+	gcc -Wall -pthread -o ./executables/server server.c worker.c $(modules)
+
 directory-structure:
 	test -d "./executables" || mkdir "./executables"
 	test -d "./executables/www" || mkdir "./executables/www"

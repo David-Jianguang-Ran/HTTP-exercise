@@ -13,7 +13,6 @@
 
 #define TERMINATE 10  // should these be an enum?
 #define ENQUEUE 11
-#define DEBUG 1
 
 #define KEEP_ALIVE_TIMEOUT 10
 #define DOCUMENT_ROOT "./www"
@@ -34,6 +33,7 @@ struct resource_info create_shared_resource(int job_stack_size, int reserve_slot
 // all worker threads MUST BE finished (joined) before freeing resource
 // calling this frees all underlying resource, only need to call it once for multiple copies
 void free_shared_resource(struct resource_info* ptr_to_resource);
+
 void* worker_main(void* shared);
 int process_job(job_t* current_job, struct resource_info* resource);
 // request string must be null terminated or face UNDEFINED CONSEQUENCES!!
