@@ -11,7 +11,7 @@
 
 #include "worker.h"
 
-#define DEBUG 1
+#define DEBUG 0
 
 #define PRINTOUT_BUFFER_SIZE 512
 
@@ -83,6 +83,10 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
 
     // discard expired jobs
     if ((current_job->expiration_time != 0) && (current_job->expiration_time < (unsigned int) time(NULL))) {
+        if (1) {
+            sprintf(output_buffer, "<%d> socket:%d Timed Out\n", shared_resource->thread_id, current_job->socket_fd);
+            safe_write(shared_resource->std_out, output_buffer);
+        }
         return TERMINATE;
     }
 
@@ -108,6 +112,10 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
 
     // build response header first line
     if (request_version == MALFORMED) {
+        if (1) {  // always printout bad_request
+            sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\nBad Request\n", shared_resource->thread_id, current_job->socket_fd, current_job->request);
+            safe_write(shared_resource->std_out, output_buffer);
+        }
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 400 Bad Request\r\n");
         try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
@@ -255,6 +263,7 @@ int parse_request_string(char* working_request, bool* is_get, char* url, enum ht
             *end_of_url = '\0';
         }
     }
+    *divider_b = ' ';
 
     // *end_of_first_line = '\n';
     // parse any request headers

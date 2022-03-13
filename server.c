@@ -77,6 +77,7 @@ int main(int argc, char* argv[]) {
     // listen for incoming connection
     SHOULD_SHUTDOWN = 0;
     ret_status = listen(listener_socket_fd, JOB_STACK_SIZE);
+    safe_write(worker_resource[0].std_out, "Server listening for connection\n");
     while (!SHOULD_SHUTDOWN) {
         connected_fd = accept(listener_socket_fd, NULL, NULL);
         new_job = job_construct(connected_fd);
