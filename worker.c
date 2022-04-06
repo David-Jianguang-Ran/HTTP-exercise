@@ -140,6 +140,8 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         safe_write(shared_resource->std_out, output_buffer);
     }
 
+
+
     // try to open file for GET and or build response
     if (!request_is_get) {
         copy_into_buffer(response_buffer, &response_tail,
@@ -147,6 +149,11 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         requested_file = NULL;
     } else {
         requested_file = fill_content_info(response_buffer,&response_tail, request_url);
+    }
+
+    if (DEBUG) {
+        sprintf(output_buffer, "<%d> socket:%d url:\n%s\n", shared_resource->thread_id, current_job->socket_fd, request_url);
+        safe_write(shared_resource->std_out, output_buffer);
     }
 
     if (DEBUG && requested_file == NULL) {

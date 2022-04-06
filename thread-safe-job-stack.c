@@ -41,7 +41,7 @@ int job_stack_push(job_stack_t* stack, job_t* ptr_in) {
     if (stack->finished) {
         return FINISHED;
     }
-    // if stack has more than max - reserve items,
+    // if stack has more than max items,
     // wait until a consumer has popped some off stack and try again
     if (stack->top >= stack->max_job_count) {
         pthread_cond_wait(&(stack->not_full), &(stack->mutex));

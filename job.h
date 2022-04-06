@@ -5,7 +5,6 @@
 #ifndef NS_PA_2_JOB_H
 #define NS_PA_2_JOB_H
 
-#define JOB_TIME_TO_LIVE 10
 #define JOB_REQUEST_BUFFER_SIZE 4096
 #define MAX_URL_SIZE 2048
 
@@ -15,7 +14,6 @@ struct job_info {
     int socket_fd;
     char request[JOB_REQUEST_BUFFER_SIZE + 1];
     int request_tail;
-    unsigned long expiration_time;
 };
 typedef struct job_info job_t;
 

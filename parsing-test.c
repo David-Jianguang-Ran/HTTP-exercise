@@ -217,6 +217,39 @@ int test_parse_request_string() {
            DOT_ONE, version,
            0, keep_alive);
 
+    strncpy(request_string, "HELO mail.colorado.edu\r\n", JOB_REQUEST_BUFFER_SIZE);
+    result = parse_request_string(request_string ,&is_get, url, &version, &keep_alive);
+    printf("---------case 13---------\n"
+           "expected  :  actual\n"
+           "return: %d : %d\n"
+           "GET: %d : %d\n"
+           "URL: %s : %s\n"
+           "version: %d : %d\n"
+           "keep alive: %d : %d\n"
+            , SUCCESS, result,
+           -1, is_get,
+           "???", url,
+           MALFORMED, version,
+           -1, keep_alive);
+
+    strncpy(request_string,
+            "GET /foo2.jpg HTTP/1.1\r\n"
+            "Connection: keep-alive\r\n"
+            , JOB_REQUEST_BUFFER_SIZE);
+    result = parse_request_string(request_string ,&is_get, url, &version, &keep_alive);
+    printf("---------case 14---------\n"
+           "expected  :  actual\n"
+           "return: %d : %d\n"
+           "GET: %d : %d\n"
+           "URL: %s : %s\n"
+           "version: %d : %d\n"
+           "keep alive: %d : %d\n"
+            , SUCCESS, result,
+           true, is_get,
+           "/foo2.jpg", url,
+           DOT_ONE, version,
+           true, keep_alive);
+
     return 0;
 }
 
