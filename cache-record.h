@@ -10,13 +10,13 @@
 
 #include "constants.h"
 
-extern unsigned int CACHE_TTL;
+extern int CACHE_TTL;
 
 enum action_status {unavailable, should_read, should_write};
 
 struct cache_record {
     char name[CACHE_HASH_LENGTH];
-    unsigned long expiration_time;
+    long expiration_time;
     int write_in_progress;
     int readers;
     pthread_mutex_t mutex;
@@ -34,7 +34,7 @@ cache_record_t* cache_record_create(char* name);
 cache_table_t* cache_table_create();
 
 cache_record_t* cache_record_get_or_create(cache_table_t* table, char* url, enum action_status* status_ret);
-int cache_record_close(cache_record_t* record, enum action_status status);
+void cache_record_close(cache_record_t* record, enum action_status status);
 
 
 

@@ -16,7 +16,7 @@
 #define DEBUG 1
 #define DEBUG_THREADS 0
 
-
+int CACHE_TTL;
 
 struct resource_info create_shared_resource(int job_stack_size, int reserve_slots) {
     struct resource_info created;
@@ -97,14 +97,14 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     // discard expired jobs
     if ((current_job->expiration_time != 0) && (current_job->expiration_time < (unsigned int) time(NULL))) {
         if (DEBUG) {
-            sprintf(output_buffer, "<%d> socket:%d Timed Out\n", shared_resource->thread_id, current_job->socket_fd);
+            sprintf(output_buffer, "<%d> socket:%d Timed Out\n", shared_resource->thread_id, current_job->client_socket_fd);
             safe_write(shared_resource->std_out, output_buffer);
         }
         return TERMINATE;
     }
 
     // try to non-blocking read from TCP stream
-    ret_status = recv(current_job->socket_fd, current_job->request + current_job->request_tail,
+    ret_status = recv(current_job->client_socket_fd, current_job->request + current_job->request_tail,
                       JOB_REQUEST_BUFFER_SIZE - current_job->request_tail, MSG_DONTWAIT);
     if (ret_status == -1) {  // no data available, push job back onto the stack
         return ENQUEUE;
@@ -125,7 +125,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     if (DEBUG && (request_version == MALFORMED || request_version == NOT_SUPPORTED || !request_is_get)) {
-        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n4xx response\n", shared_resource->thread_id, current_job->socket_fd, current_job->request);
+        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n4xx response\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request);
         safe_write(shared_resource->std_out, output_buffer);
     }
 
@@ -133,12 +133,12 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     if (request_version == MALFORMED) {
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 400 Bad Request\r\n");
-        try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+        try_send_in_chunks(current_job->client_socket_fd, response_buffer, response_tail);
         return TERMINATE;
     } else if (request_version == NOT_SUPPORTED) {
         copy_into_buffer(response_buffer, &response_tail,
                          "HTTP/1.1 505 HTTP Version Not Supported\r\n");
-        try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+        try_send_in_chunks(current_job->client_socket_fd, response_buffer, response_tail);
         return TERMINATE;
     } else if (request_version == DOT_ZERO) {
         copy_into_buffer(response_buffer, &response_tail,
@@ -149,7 +149,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     if (1) {  // always printout first line of a valid request for inspection
-        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\nKeep-Alive:%d\n", shared_resource->thread_id, current_job->socket_fd, current_job->request, request_keep_alive);
+        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\nKeep-Alive:%d\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request, request_keep_alive);
         safe_write(shared_resource->std_out, output_buffer);
     }
 
@@ -178,7 +178,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     // send the response we've built over the wire
-    ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
+    ret_status = try_send_in_chunks(current_job->client_socket_fd, response_buffer, response_tail);
     if (ret_status == FAIL) {
         safe_write(shared_resource->std_out,"Failed to send to client\n");
     }
@@ -251,7 +251,6 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
                          char* path, char* hostname, char* response_buffer, int* response_tail) {
     int result;
     char* url_question_mark;
-    char* url_start;
     int server_socket_fd;
     cache_record_t* cache_record;
     enum action_status cache_action;
@@ -268,7 +267,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     cache_record = NULL;
 
     // check request against cache
-    url_question_mark = strchr(url, '?');
+    url_question_mark = strchr(path, '?');
     if (url_question_mark != NULL) {
         // borrowing response buffer to rebuild url
         sprintf(response_buffer, "%s%s", hostname, path);
@@ -331,7 +330,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
 
     // relay response, cache response if possible
     bytes_read = recv(server_socket_fd, response_buffer, JOB_REQUEST_BUFFER_SIZE, 0);
-    result = parse_response_header(response_buffer, &response_header_length, &response_content_length);
+    parse_response_header(response_buffer, &response_header_length, &response_content_length);
     // store chunk in cache and send to client
     result = cache_and_send(current_job->client_socket_fd, cache_file, response_buffer, bytes_read);
     if (result == FAIL) {
@@ -355,6 +354,18 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
         fclose(cache_file);
         cache_record_close(cache_record, should_write);
     }
+    return SUCCESS;
+}
+
+int cache_and_send(int client_socket, FILE* cache_file,char* buffer, int length) {
+    if (cache_file != NULL) {
+        fwrite(buffer, sizeof(char), length, cache_file);
+    }
+
+    if (client_socket != -1) {
+        return try_send_in_chunks(client_socket, buffer, length);
+    }
+
     return SUCCESS;
 }
 

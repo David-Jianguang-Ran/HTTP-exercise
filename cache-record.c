@@ -18,7 +18,7 @@ cache_table_t* cache_table_create() {
 
     created = malloc(sizeof(cache_table_t));
     created->content = NULL;
-    pthread_mutex_init(&(created->mutex));
+    pthread_mutex_init(&(created->mutex), NULL);
     return created;
 }
 
@@ -30,7 +30,7 @@ cache_record_t* cache_record_create(char* name) {
     created->expiration_time = time(NULL) + CACHE_TTL;
     created->write_in_progress = 1;
     created->readers = 0;
-    pthread_mutex_init(&(created->mutex));
+    pthread_mutex_init(&(created->mutex), NULL);
     return created;
 }
 
@@ -46,10 +46,10 @@ cache_record_t* cache_record_get_or_create(cache_table_t* table, char* url, enum
         return record;  // unable to process url longer than 2048 bytes
     }
 
-    sprintf(hash_command, "md5sum <<< '%s'", url)  // TODO:  this looks like a remote code execution vulnerability. find out for sure
+    sprintf(hash_command, "md5sum <<< '%s'", url);  // TODO:  this looks like a remote code execution vulnerability. find out for sure
     // is this a valid url? : " | echo nasty-command" maybe as hexadecimal?
-    hash_return = popen(hash_command);
-    fgets(hash_buffer, 32);
+    hash_return = popen(hash_command, "r");
+    fgets(hash_buffer, 32, hash_return);
     hash_buffer[32] = '\0';
     fclose(hash_return);
 
@@ -84,4 +84,14 @@ cache_record_t* cache_record_get_or_create(cache_table_t* table, char* url, enum
 
     pthread_mutex_unlock(&(table->mutex));
     return record;
+}
+
+void cache_record_close(cache_record_t* record, enum action_status status) {
+    pthread_mutex_lock(&(record->mutex));
+    if (status == should_write) {
+        record->write_in_progress = 0;
+    } else if (status == should_read) {
+        record->readers--;
+    }
+    pthread_mutex_unlock(&(record->mutex));
 }

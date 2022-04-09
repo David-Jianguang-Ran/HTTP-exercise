@@ -1,4 +1,4 @@
-modules = thread-safe-job-stack.c thread-safe-file.c job.c block-table.c
+modules = thread-safe-job-stack.c thread-safe-file.c job.c block-table.c cache-record.c parsing.c worker.c
 
 server: directory-structure
 	gcc -Wall -pthread -o ./executables/server server.c worker.c $(modules)
@@ -14,4 +14,5 @@ experiments: directory-structure
 tests: directory-structure
 	gcc -Wextra -Wall -pthread -o ./executables/block-table-test block-table.c block-table-test.c
 	gcc -Wall -o ./executables/parsing-test parsing-test.c parsing.c
+	gcc -Wextra -Wall -pthread -o ./executables/resolve-host-test resolve-host-test.c $(modules)
 	#gcc -Wextra -Wall -pthread -o ./executables/job-stack-test job-stack-test.c $(modules)

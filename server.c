@@ -18,7 +18,6 @@
 
 int SHOULD_SHUTDOWN;
 
-// TODO : add kill signal handler
 void shutdown_signal_handler(int sig_num) {
     SHOULD_SHUTDOWN = 1;
 }
