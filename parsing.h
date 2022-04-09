@@ -14,7 +14,7 @@ enum http_version {MALFORMED, NOT_SUPPORTED, DOT_ZERO, DOT_ONE};
 
 // request string must be null terminated or face UNDEFINED CONSEQUENCES!!
 // will remove trailing / from url, unless it's only a slash
-int parse_request_string(char* request_string, bool* is_GET, char* path, char* hostname,
+int parse_request_string(char* request_string, bool* is_GET, char* hostname, char* path,
                          enum http_version* version, bool* proxy_keep_alive);
 // find the length of response header in bytes, including double /r/n
 // extracts content-length from header

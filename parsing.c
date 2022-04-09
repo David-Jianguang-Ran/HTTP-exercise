@@ -91,7 +91,6 @@ int parse_request_string(char* working_request, bool* is_get, char* hostname, ch
     *divider_b = ' ';
     *end_of_first_line = '\n';
 
-
     // parse any request headers
     *proxy_keep_alive = false;
     divider_a = end_of_first_line + 1;
@@ -131,19 +130,18 @@ void parse_response_header(char* response_string, int* response_header_length, i
         divider_a = divider_b + 1;
         divider_b = strchr(divider_a, '\n');
     }
-
     if (*response_content_length == -1) {  // header only, no body
         divider_b = strrchr(response_string, '\n');
-        *response_header_length = divider_b - response_string;
+        *response_header_length = divider_b - response_string + 1;
     } else {
         // find double /r/n
         divider_a = strchr(response_string, '\r');
         while (divider_a != NULL) {
             if (matches_command(divider_a, "\r\n\r\n")) {
-                *response_header_length = divider_a - response_string + 3;
+                *response_header_length = divider_a - response_string + 4;
                 return;
             } else {
-                divider_a = strchr(divider_a, '\r');
+                divider_a = strchr(divider_a + 1, '\r');
             }
         }
     }

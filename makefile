@@ -9,6 +9,7 @@ directory-structure:
 
 experiments: directory-structure
 	gcc -Wall -o ./executables/resolve-host-experiment resolve-host-experiment.c
+	gcc -Wall -o ./executables/simple-client-experiment simple-client-experiment.c
 
 tests: directory-structure
 	gcc -Wextra -Wall -pthread -o ./executables/block-table-test block-table.c block-table-test.c
