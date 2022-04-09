@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include "uthash.h"
 
-#define CACHE_HASH_LENGTH 33  // 32 bytes for md5sum output
+#include "constants.h"
 
 extern unsigned int CACHE_TTL;
 

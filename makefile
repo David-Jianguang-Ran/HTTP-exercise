@@ -12,5 +12,5 @@ experiments: directory-structure
 
 tests: directory-structure
 	gcc -Wextra -Wall -pthread -o ./executables/block-table-test block-table.c block-table-test.c
-	gcc -Wall -o ./executables/parsing-test parsing-test.c worker.c $(modules)
+	gcc -Wall -o ./executables/parsing-test parsing-test.c parsing.c
 	#gcc -Wextra -Wall -pthread -o ./executables/job-stack-test job-stack-test.c $(modules)

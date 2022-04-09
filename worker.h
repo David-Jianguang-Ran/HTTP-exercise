@@ -8,17 +8,14 @@
 #include <stdbool.h>
 #include <netdb.h>
 
+#include "parsing.h"
 #include "block-table.h"
 #include "cache-record.h"
 #include "job.h"
 #include "thread-safe-file.h"
 #include "thread-safe-job-stack.h"
 
-#define TERMINATE 10  // should these be an enum?
-#define ENQUEUE 11
-
-#define KEEP_ALIVE_TIMEOUT 10
-#define CACHE_FILE_ROOT "./cache"
+#include "constants.h"
 
 
 struct resource_info {
@@ -32,7 +29,6 @@ struct resource_info {
     safe_file_t* std_out;
 };
 
-enum http_version {MALFORMED, NOT_SUPPORTED, DOT_ZERO, DOT_ONE};
 enum host_status {ok, error, not_found, blocked};
 
 // thread_id of returned is always -1 for main thread
@@ -59,13 +55,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource);
 // int process_prefetch_job(job_t* current_job, struct resource_info* shared_resource);
 
 
-// request string must be null terminated or face UNDEFINED CONSEQUENCES!!
-// will remove trailing / from url, unless it's only a slash
-int parse_request_string(char* request_string, bool* is_GET, char* url, char* hostname,
-                         enum http_version* version, bool* proxy_keep_alive);
-// find the length of response header in bytes, including double /r/n
-// extracts content-length from header
-void parse_response_header(char* response_string, int* response_header_length, int* response_content_length);
+
 // resolves hostname to address
 // only one thread at a time using 'shared_resource.addr_lookup_lock'
 // checks both hostname and address against `shared_resource.block_table`
@@ -81,11 +71,6 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
 // will close the cache file if a fail is thrown inside this function
 int cache_and_send(int client_socket, FILE* cache_file,char* buffer, int length);
 
-// simple wrapper for strncmp, only match up to strlen(command)
-// all strings must be zero terminated
-// return 0 for no match, 1 for match
-int matches_command(char* target, char* command);
-int matches_command_case_insensitive(char* target, char* command);
 // this function DOES NOT check str boundary
 void copy_into_buffer(char* target, int* target_tail, char* content);
 // returns SUCCESS after all up to length is sent

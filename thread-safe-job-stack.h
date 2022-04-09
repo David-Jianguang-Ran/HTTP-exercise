@@ -8,9 +8,7 @@
 #include <pthread.h>
 #include "job.h"
 
-#define FINISHED -1
-#define SUCCESS 0
-#define FAIL 1
+#include "constants.h"
 
 struct job_stack {
     job_t** content_base;

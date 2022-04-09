@@ -32,6 +32,6 @@ int single_threaded_add_check_test () {
     return 0;
 }
 
-int main (int argc, char argv[]) {
+int main (int argc, char* argv[]) {
     return single_threaded_add_check_test();
 }
