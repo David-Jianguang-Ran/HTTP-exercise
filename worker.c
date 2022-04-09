@@ -197,7 +197,7 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
 
     *server_address = NULL;
     // break hostname into name and port
-    strcpy(hostname, server_name);
+    strcpy(server_name, hostname);
     server_port = strchr(server_name, ':');
     if (server_port != NULL) {
         *server_port = '\0';
@@ -231,7 +231,8 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
     // check the resolved address(es) against block table
     server_address_head = *server_address;
     while (1) {
-        inet_ntop((*server_address)->ai_family, (*server_address)->ai_addr, server_name, MAX_NAME_LENGTH);
+        inet_ntop(AF_INET, &(((struct sockaddr_in*)(*server_address)->ai_addr)->sin_addr), server_name, MAX_NAME_LENGTH);
+        // printf("checking addr: %s\n", server_name);
         if (block_table_check(shared_resource->block_table, server_name)) {
             if ((*server_address)->ai_next != NULL) {
                 (*server_address) = (*server_address)->ai_next;
