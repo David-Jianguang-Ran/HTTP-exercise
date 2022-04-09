@@ -33,7 +33,7 @@ typedef struct cache_record_table cache_table_t;
 cache_record_t* cache_record_create(char* name);
 cache_table_t* cache_table_create();
 
-int cache_record_get_or_create(cache_table_t* table, char* url, cache_record_t** record_ret, enum action_status* status_ret);
+cache_record_t* cache_record_get_or_create(cache_table_t* table, char* url, enum action_status* status_ret);
 int cache_record_close(cache_record_t* record, enum action_status status);
 
 

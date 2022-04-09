@@ -34,14 +34,16 @@ cache_record_t* cache_record_create(char* name) {
     return created;
 }
 
-int cache_record_get_or_create(cache_table_t* table, char* url, cache_record_t** record_ret, enum action_status* status_ret) {
+cache_record_t* cache_record_get_or_create(cache_table_t* table, char* url, enum action_status* status_ret) {
     char hash_command[URL_MAX_LENGTH + 256];
     FILE* hash_return;
     char hash_buffer[CACHE_HASH_LENGTH];
     cache_record_t* record;
 
+    record = NULL;
     if (strlen(url) > URL_MAX_LENGTH) {
-        return FAIL;  // unable to process url longer than 2048 bytes
+        *status_ret = unavailable;
+        return record;  // unable to process url longer than 2048 bytes
     }
 
     sprintf(hash_command, "md5sum <<< '%s'", url)  // TODO:  this looks like a remote code execution vulnerability. find out for sure
@@ -57,14 +59,12 @@ int cache_record_get_or_create(cache_table_t* table, char* url, cache_record_t**
         // new cache record is created, it should be filled with actual data
         record = cache_record_create(hash_buffer);
         HASH_ADD_STR(table->content, name, record);
-        *record_ret = record;
         *status_ret = should_write;
         pthread_mutex_unlock(&(table->mutex));
-        return SUCCESS;
+        return record;
     }
 
     pthread_mutex_lock(&(record->mutex));
-    *record_ret = record;
     if (record->expiration_time < time(NULL) && !record->readers && !record->write_in_progress) {
         // if cache is stale and no one else is updating it, update it and reset TTL
         *status_ret = should_write;
@@ -83,5 +83,5 @@ int cache_record_get_or_create(cache_table_t* table, char* url, cache_record_t**
     pthread_mutex_unlock(&(record->mutex));
 
     pthread_mutex_unlock(&(table->mutex));
-    return SUCCESS;
+    return record;
 }

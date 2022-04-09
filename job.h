@@ -11,9 +11,10 @@
 // why use struct instead of just a socket_fd?
 // using a struct makes it easier to extend and add `connection: keep-alive` feature
 struct job_info {
-    int socket_fd;
+    int client_socket_fd;
     char request[JOB_REQUEST_BUFFER_SIZE + 1];
     int request_tail;
+    unsigned int expiration_time;
 };
 typedef struct job_info job_t;
 

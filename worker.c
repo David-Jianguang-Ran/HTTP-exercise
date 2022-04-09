@@ -1,6 +1,7 @@
 //
 // Created by dran on 3/8/22.
 //
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -8,6 +9,7 @@
 #include <time.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <arpa/inet.h>
 
 #include "worker.h"
 
@@ -19,68 +21,78 @@
 struct resource_info create_shared_resource(int job_stack_size, int reserve_slots) {
     struct resource_info created;
     created.thread_id = -1;
-    created.job_stack = job_stack_construct(job_stack_size, reserve_slots);
+    created.client_job_stack = job_stack_construct(job_stack_size, reserve_slots);
+    // created.cache_job_stack = job_stack_construct(job_stack_size, reserve_slots);
     created.std_out = safe_init(stdout);
+    created.addr_lookup_lock = malloc(sizeof(pthread_mutex_t));
+    pthread_mutex_init(created.addr_lookup_lock, NULL);
+    created.block_table = block_table_create();
     return created;
 }
 
 void free_shared_resource(struct resource_info* ptr_to_resource) {
-    job_stack_destruct(ptr_to_resource->job_stack);
+    job_stack_destruct(ptr_to_resource->client_job_stack);
     safe_close(ptr_to_resource->std_out);
+    pthread_mutex_destroy(ptr_to_resource->addr_lookup_lock);
 }
 
-void* worker_main(void* shared) {
-    char output_buffer[PRINTOUT_BUFFER_SIZE];
-    struct resource_info* shared_resource;
-    int ret_status;
-    job_t* current_job;
-    shared_resource = (struct resource_info*) shared;
-    while (1) {
-        ret_status = job_stack_pop(shared_resource->job_stack, &current_job);
-        if (ret_status == FINISHED) {
-            return NULL;
-        } else if (ret_status == SUCCESS) {
-            if (DEBUG_THREADS) {
-                sprintf(output_buffer, "<%d> socket:%d SERVICE START\n", shared_resource->thread_id, current_job->socket_fd);
-                safe_write(shared_resource->std_out, output_buffer);
-            }
-            ret_status = process_job(current_job, shared_resource);  // this is where most of the work is done
-            if (ret_status == TERMINATE) {
-                if (DEBUG_THREADS) {
-                    sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
-                    safe_write(shared_resource->std_out, output_buffer);
-                }
-                job_destruct(current_job);
-            } else {  // re-enqueue job, expire time already set during `process_job`
-                ret_status = job_stack_push_back(shared_resource->job_stack, current_job);
-                if (ret_status != SUCCESS) {
-                    if (DEBUG_THREADS) {
-                        sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
-                        safe_write(shared_resource->std_out, output_buffer);
-                    }
-                    job_destruct(current_job);
-                } else {
-                    if (DEBUG_THREADS) {
-                        sprintf(output_buffer, "<%d> socket:%d RE-ENQUEUE\n", shared_resource->thread_id, current_job->socket_fd);
-                        safe_write(shared_resource->std_out, output_buffer);
-                    }
-                }
-            }
-        }
-    }
-
-}
+//void* worker_main(void* shared) {
+//    char output_buffer[PRINTOUT_BUFFER_SIZE];
+//    struct resource_info* shared_resource;
+//    int ret_status;
+//    job_t* current_job;
+//    shared_resource = (struct resource_info*) shared;
+//    while (1) {
+//        ret_status = job_stack_pop(shared_resource->job_stack, &current_job);
+//        if (ret_status == FINISHED) {
+//            return NULL;
+//        } else if (ret_status == SUCCESS) {
+//            if (DEBUG_THREADS) {
+//                sprintf(output_buffer, "<%d> socket:%d SERVICE START\n", shared_resource->thread_id, current_job->socket_fd);
+//                safe_write(shared_resource->std_out, output_buffer);
+//            }
+//            ret_status = process_job(current_job, shared_resource);  // this is where most of the work is done
+//            if (ret_status == TERMINATE) {
+//                if (DEBUG_THREADS) {
+//                    sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
+//                    safe_write(shared_resource->std_out, output_buffer);
+//                }
+//                job_destruct(current_job);
+//            } else {  // re-enqueue job, expire time already set during `process_job`
+//                ret_status = job_stack_push_back(shared_resource->job_stack, current_job);
+//                if (ret_status != SUCCESS) {
+//                    if (DEBUG_THREADS) {
+//                        sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
+//                        safe_write(shared_resource->std_out, output_buffer);
+//                    }
+//                    job_destruct(current_job);
+//                } else {
+//                    if (DEBUG_THREADS) {
+//                        sprintf(output_buffer, "<%d> socket:%d RE-ENQUEUE\n", shared_resource->thread_id, current_job->socket_fd);
+//                        safe_write(shared_resource->std_out, output_buffer);
+//                    }
+//                }
+//            }
+//        }
+//    }
+//
+//}
 
 int process_job(job_t* current_job, struct resource_info* shared_resource) {
     int ret_status;
     bool request_is_get;
     char request_url[MAX_URL_SIZE + 1];
+    char hostname[MAX_NAME_LENGTH + 1];
     enum http_version request_version;
     bool request_keep_alive;
+
+    struct addrinfo* server_address;
+    enum host_status server_status;
+
     char output_buffer[PRINTOUT_BUFFER_SIZE + JOB_REQUEST_BUFFER_SIZE];
     char response_buffer[JOB_REQUEST_BUFFER_SIZE + 1];
     int response_tail;
-    FILE* requested_file;
+
 
     // discard expired jobs
     if ((current_job->expiration_time != 0) && (current_job->expiration_time < (unsigned int) time(NULL))) {
@@ -104,7 +116,8 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     ret_status = parse_request_string(current_job->request, &request_is_get, request_url,
-                                      &request_version, &request_keep_alive);
+                                      hostname, &request_version, &request_keep_alive);
+
     if (ret_status == FAIL && current_job->request_tail == (JOB_REQUEST_BUFFER_SIZE - 1)) {
         request_version = MALFORMED;  // no CRLF found and buffer filled, Bad Request, Bad!
     } else if (ret_status == FAIL) {
@@ -140,71 +153,58 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         safe_write(shared_resource->std_out, output_buffer);
     }
 
-
-
-    // try to open file for GET and or build response
+    // resolve hostname, check hostname against block table
+    server_status = resolve_host(shared_resource, hostname, &server_address);
     if (!request_is_get) {
         copy_into_buffer(response_buffer, &response_tail,
                          "405 Method Not Allowed\r\n");
-        requested_file = NULL;
-    } else {
-        requested_file = fill_content_info(response_buffer,&response_tail, request_url);
-    }
-
-    if (DEBUG) {
-        sprintf(output_buffer, "<%d> socket:%d url:\n%s\n", shared_resource->thread_id, current_job->socket_fd, request_url);
-        safe_write(shared_resource->std_out, output_buffer);
-    }
-
-    if (DEBUG && requested_file == NULL) {
-        sprintf(output_buffer, "<%d> socket:%d failed-response:\n%s\n", shared_resource->thread_id, current_job->socket_fd, response_buffer);
-        safe_write(shared_resource->std_out, output_buffer);
+    } else if (server_status == blocked) {
+        copy_into_buffer(response_buffer, &response_tail,
+                         "403 Forbidden\r\n");
+    } else if (server_status == not_found) {
+        copy_into_buffer(response_buffer, &response_tail,
+                         "404 Not Found\r\n");
+    } else if (server_status == ok) {
+        // respond to client either from cache or web server
+        ret_status = handle_valid_request(current_job, shared_resource, server_address);
+        if (ret_status == FAIL) {
+            return TERMINATE;
+        } else if (request_keep_alive) {
+            current_job->expiration_time = (unsigned int) time(NULL) + KEEP_ALIVE_TIMEOUT;
+            job_clear_buffer(current_job);
+            return ENQUEUE;
+        } else {
+            return TERMINATE;
+        }
     }
 
     // additional response headers
     if (request_keep_alive) {
         copy_into_buffer(response_buffer, &response_tail,
-                         "Connection: keep-alive\r\n\r\n");
+                         "Proxy-Connection: keep-alive\r\n\r\n");
     } else {
         copy_into_buffer(response_buffer, &response_tail,
-                         "Connection: close\r\n\r\n");
+                         "Proxy-Connection: close\r\n\r\n");
     }
 
-    // send the response we've built over
+    // send the response we've built over the wire
     ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
     if (ret_status == FAIL) {
         safe_write(shared_resource->std_out,"Failed to send to client\n");
         return TERMINATE;
     }
 
-    while (requested_file != NULL) {
-        // clear buffer and start sending over the file
-        memset(response_buffer, '\0', JOB_REQUEST_BUFFER_SIZE);
-        response_tail = 0;
-        ret_status = fread(response_buffer + response_tail, sizeof(char), JOB_REQUEST_BUFFER_SIZE - response_tail, requested_file);
-        if (ret_status == 0) {  // got a EOF
-            fclose(requested_file);
-            requested_file = NULL;
-        } else {  // send buffer down the wire
-            response_tail += ret_status;
-            ret_status = try_send_in_chunks(current_job->socket_fd, response_buffer, response_tail);
-            if (ret_status == FAIL) {
-                safe_write(shared_resource->std_out,"Failed to send to client\n");
-                fclose(requested_file);
-                return TERMINATE;
-            }
-        }
-    }
-
     if (request_keep_alive) {
         current_job->expiration_time = (unsigned int) time(NULL) + KEEP_ALIVE_TIMEOUT;
+        job_clear_buffer(current_job);
         return ENQUEUE;
     } else {
         return TERMINATE;
     }
 }
 
-int parse_request_string(char* working_request, bool* is_get, char* url, enum http_version* version, bool* keep_alive) {
+int parse_request_string(char* working_request, bool* is_get, char* url, char* hostname,
+                         enum http_version* version, bool* proxy_keep_alive) {
     char* end_of_first_line;
     char* divider_a;
     char* divider_b;
@@ -278,18 +278,204 @@ int parse_request_string(char* working_request, bool* is_get, char* url, enum ht
         }
     }
     *divider_b = ' ';
+    *end_of_first_line = '\n';
 
-    // *end_of_first_line = '\n';
+    // we cannot handle https protocol
+    if (matches_command_case_insensitive(url, "https://")) {
+        *version = NOT_SUPPORTED;
+    }
+
     // parse any request headers
-    *keep_alive = false;
+    *proxy_keep_alive = false;
     divider_a = end_of_first_line + 1;
     divider_b = strchr(divider_a, '\n');
     while (divider_b != NULL) {
-        if (matches_command_case_insensitive(divider_a, "Connection: keep-alive")) {
-            *keep_alive = true;
+        if (matches_command_case_insensitive(divider_a, "Proxy-Connection: keep-alive")) {
+            *proxy_keep_alive = true;
+        } else if (matches_command_case_insensitive(divider_a, "Host: ")) {
+            // capture hostname
+            divider_a = strchr(divider_a, ' ');
+            while (*divider_a == ' ') {
+                divider_a++;
+            }
+            strncpy(hostname, divider_a, divider_b - divider_a - 2);
         }
         divider_a = divider_b + 1;
         divider_b = strchr(divider_a, '\n');
+    }
+    return SUCCESS;
+}
+
+enum host_status resolve_host(struct resource_info* shared_resource, char* hostname, struct addrinfo** server_address) {
+    int ret_status;
+    struct addrinfo server_address_hints;
+    struct addrinfo* server_address_head;
+    char server_name[MAX_NAME_LENGTH + 1];  // local copy of host name because we don't want to mess with outer scope data
+    char* server_port;
+
+    *server_address = NULL;
+    // break hostname into name and port
+    strcpy(hostname, server_name);
+    server_port = strchr(server_name, ':');
+    if (server_port != NULL) {
+        *server_port = '\0';
+        server_port++;
+    }
+
+    if (block_table_check(shared_resource->block_table, server_name)) {
+        return blocked;
+    }
+
+    // resolve address, this is protected by addr_lookup_lock
+    pthread_mutex_lock(shared_resource->addr_lookup_lock);
+    server_address_hints.ai_family = AF_UNSPEC;
+    server_address_hints.ai_socktype = SOCK_STREAM;
+    if (server_port != NULL) {
+        ret_status = getaddrinfo(server_name, server_port, &server_address_hints, server_address);
+    } else {
+        ret_status = getaddrinfo(server_name, "http", &server_address_hints, server_address);
+    }
+    pthread_mutex_unlock(shared_resource->addr_lookup_lock);
+    if (ret_status != 0) {
+        return not_found;
+    }
+
+    // un-mangle hostname
+    if (server_port != NULL) {
+        server_port--;
+        *server_port = ':';
+    }
+
+    // check the resolved address(es) against block table
+    server_address_head = *server_address;
+    while (1) {
+        inet_ntop((*server_address)->ai_family, (*server_address)->ai_addr, server_name, MAX_NAME_LENGTH);
+        if (block_table_check(shared_resource->block_table, server_name)) {
+            if ((*server_address)->ai_next != NULL) {
+                (*server_address) = (*server_address)->ai_next;
+            } else {
+                freeaddrinfo(server_address_head);
+                *server_address = NULL;
+                return blocked;
+            }
+        } else {
+
+            return ok;
+        }
+    }
+}
+
+int handle_valid_request(job_t* current_job, struct resource_info* shared_resource, struct addrinfo* server_address,
+                         char* url, char* hostname, char* response_buffer, int* response_tail) {
+    int result;
+    char* url_question_mark;
+    char* url_start;
+    int server_socket_fd;
+    cache_record_t* cache_record;
+    enum action_status cache_action;
+    char cache_file_path[MAX_NAME_LENGTH + 1];
+    FILE* cache_file;
+    int bytes_read;
+    int response_header_length;
+    int response_content_length;
+    int response_content_read;
+
+    // clear response buffer
+    memset(response_buffer, 0, JOB_REQUEST_BUFFER_SIZE + 1);
+    *response_tail = 0;
+    cache_record = NULL;
+
+    // check request against cache
+    url_question_mark = strchr(url, '?');
+    if (url_question_mark != NULL) {
+        cache_record = cache_record_get_or_create(shared_resource->cache_table, url, &cache_action);
+    } else {
+        cache_action = unavailable;
+    }
+
+    // TODO : prefetch :  a job without client socket mean it is a prefetch cache job cache hit, do nothing
+    if (cache_action == should_read) {
+        // open cache file and respond
+        sprintf(cache_file_path, "%s/%s", CACHE_FILE_ROOT, cache_record->name);
+        cache_file = fopen(cache_file_path, "r");
+        if (cache_file != NULL) {
+            bytes_read = fread(response_buffer, sizeof(char), JOB_REQUEST_BUFFER_SIZE, cache_file);
+            response_buffer[bytes_read] = '\0';
+            while (bytes_read != 0) {
+                *response_tail = bytes_read;
+                result = try_send_in_chunks(current_job->client_socket_fd, response_buffer, *response_tail);
+                if (result == FAIL) {
+                    // log failure, although it is unlikely to happen
+                    return FAIL;
+                }
+                bytes_read = fread(response_buffer, sizeof(char), JOB_REQUEST_BUFFER_SIZE, cache_file);
+                response_buffer[bytes_read] = '\0';
+            }
+            // TODO : try to start prefetch here
+            fclose(cache_file);
+            cache_record_close(cache_record, cache_action);
+            return SUCCESS;
+        }
+    }
+
+    if (cache_action == should_write) {
+        // open file for cache write
+        sprintf(cache_file_path, "%s/%s", CACHE_FILE_ROOT, cache_record->name);
+        cache_file = fopen(cache_file_path, "w");
+    }
+
+    // open a socket to server
+    server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    result = connect(server_socket_fd, server_address->ai_addr, server_address->ai_addrlen);
+    if (result == -1) {
+        if (cache_file != NULL) {
+            fclose(cache_file);
+        }
+        return FAIL;
+    }
+
+    // reformat request then send to server
+    url_start = strchr(current_job->request, ' ');
+    while (*url_start == ' ') {
+        url_start++;
+    }
+    memmove(url_start,   // remove http:hostname from request url
+            url_start + strlen("http://") + strlen(hostname),
+            strlen(url_start) - strlen("http://") - strlen(hostname));
+    current_job->request_tail -= strlen("http://") + strlen(hostname);
+    result = try_send_in_chunks(server_socket_fd, current_job->request, current_job->request_tail);
+    if (result == FAIL) {
+        if (cache_file != NULL) {
+            fclose(cache_file);
+        }
+        return FAIL;
+    }
+
+    // relay response, cache response if possible
+    bytes_read = recv(server_socket_fd, response_buffer, JOB_REQUEST_BUFFER_SIZE, 0);
+    result = parse_response_header(response_buffer, &response_header_length, &response_content_length);
+    // store chunk in cache and send to client
+    result = cache_and_send(current_job->client_socket_fd, cache_file, response_buffer, bytes_read);
+    if (result == FAIL) {
+        return FAIL;
+    }
+    // response may arrive in chunks with max size equal to response buffer max
+    // keep receiving, caching and sending untill done
+    if (bytes_read != response_header_length + response_content_length) {
+        response_content_read = bytes_read - response_header_length;
+        while (response_content_length != response_content_read) {
+            bytes_read = recv(server_socket_fd, response_buffer, JOB_REQUEST_BUFFER_SIZE, 0);
+            response_content_read += bytes_read;
+            result = cache_and_send(current_job->client_socket_fd, cache_file, response_buffer, bytes_read);
+            if (result == FAIL) {
+                return FAIL;
+            }
+        }
+    }
+    // TODO : try to start prefetch here
+    if (cache_action == should_write) {
+        fclose(cache_file);
+        cache_record_close(cache_record, should_write);
     }
     return SUCCESS;
 }
@@ -310,89 +496,89 @@ int matches_command_case_insensitive(char* target, char* command) {
     }
 }
 
-FILE* fill_content_info(char* response_buffer, int* response_tail, char* url) {
-    int ret_status;
-    char file_path[JOB_REQUEST_BUFFER_SIZE + 1];
-    FILE* requested_file;
-    struct stat file_stats;
-    char* file_name_start;
-    char* file_extension_start;
-
-    file_name_start = strrchr(url, '/');
-    file_extension_start = strrchr(file_name_start, '.');
-    if (file_extension_start == NULL) {  // url is a directory, try to open url/index.html or url/index.htm
-        sprintf(file_path, "%s%s/index.html", DOCUMENT_ROOT, url);
-        ret_status = stat(file_path, &file_stats);
-        if ((ret_status == -1) && (errno == ENOENT)) {
-            sprintf(file_path, "%s%s/index.htm", DOCUMENT_ROOT, url);
-            ret_status = stat(file_path, &file_stats);
-            if ((ret_status == -1) && (errno == ENOENT)) {
-                copy_into_buffer(response_buffer, response_tail,
-                         "404 Not Found\r\n");
-                return NULL;
-            } else if ((ret_status == -1) && (errno == EACCES)) {
-                copy_into_buffer(response_buffer, response_tail,
-                                 "405 Forbidden\r\n");
-                return NULL;
-            }
-        } else if ((ret_status == -1) && (errno == EACCES)) {
-            copy_into_buffer(response_buffer, response_tail,
-                             "405 Forbidden\r\n");
-            return NULL;
-        }
-    } else {  // try to get file stats on requested file
-        sprintf(file_path, "%s%s", DOCUMENT_ROOT, url);
-        ret_status = stat(file_path, &file_stats);
-        if ((ret_status == -1) && (errno == ENOENT)) {
-            copy_into_buffer(response_buffer, response_tail,
-                             "404 Not Found\r\n");
-            return NULL;
-        } else if ((ret_status == -1) && (errno == EACCES)) {
-            copy_into_buffer(response_buffer, response_tail,
-                             "405 Forbidden\r\n");
-            return NULL;
-        }
-    }
-
-    // try to open file
-    requested_file = fopen(file_path, "rb");
-    if (requested_file == NULL) {
-        // 405 because we know file stat exist
-        copy_into_buffer(response_buffer, response_tail,
-                         "405 Forbidden\r\n");
-        return NULL;
-    } else {
-        copy_into_buffer(response_buffer, response_tail,
-                         "200 OK\r\n");
-    }
-
-    if (matches_command(file_extension_start, ".html")) {
-        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/html\r\n");
-    } else if (matches_command(file_extension_start, ".txt")) {
-        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/plain\r\n");
-    } else if (matches_command(file_extension_start, ".png")) {
-        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/png\r\n");
-    } else if (matches_command(file_extension_start, ".gif")) {
-        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/gif\r\n");
-    } else if (matches_command(file_extension_start, ".jpg")) {
-        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/jpg\r\n");
-    } else if (matches_command(file_extension_start, ".css")) {
-        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/css\r\n");
-    } else if (matches_command(file_extension_start, ".js")) {
-        copy_into_buffer(response_buffer, response_tail, "Content-Type: application/javascript\r\n");
-    } else {
-        // 405 or whatever better convey file type not supported
-        copy_into_buffer(response_buffer, response_tail,
-                         "405 Forbidden\r\n");
-        return NULL;
-    }
-
-    // add content length header
-    // borrowing file path buffer
-    sprintf(file_path, "Content-Length: %ld\r\n", file_stats.st_size);
-    copy_into_buffer(response_buffer, response_tail, file_path);
-    return requested_file;
-}
+//FILE* fill_content_info(char* response_buffer, int* response_tail, char* url) {
+//    int ret_status;
+//    char file_path[JOB_REQUEST_BUFFER_SIZE + 1];
+//    FILE* requested_file;
+//    struct stat file_stats;
+//    char* file_name_start;
+//    char* file_extension_start;
+//
+//    file_name_start = strrchr(url, '/');
+//    file_extension_start = strrchr(file_name_start, '.');
+//    if (file_extension_start == NULL) {  // url is a directory, try to open url/index.html or url/index.htm
+//        sprintf(file_path, "%s%s/index.html", DOCUMENT_ROOT, url);
+//        ret_status = stat(file_path, &file_stats);
+//        if ((ret_status == -1) && (errno == ENOENT)) {
+//            sprintf(file_path, "%s%s/index.htm", DOCUMENT_ROOT, url);
+//            ret_status = stat(file_path, &file_stats);
+//            if ((ret_status == -1) && (errno == ENOENT)) {
+//                copy_into_buffer(response_buffer, response_tail,
+//                         "404 Not Found\r\n");
+//                return NULL;
+//            } else if ((ret_status == -1) && (errno == EACCES)) {
+//                copy_into_buffer(response_buffer, response_tail,
+//                                 "405 Forbidden\r\n");
+//                return NULL;
+//            }
+//        } else if ((ret_status == -1) && (errno == EACCES)) {
+//            copy_into_buffer(response_buffer, response_tail,
+//                             "405 Forbidden\r\n");
+//            return NULL;
+//        }
+//    } else {  // try to get file stats on requested file
+//        sprintf(file_path, "%s%s", DOCUMENT_ROOT, url);
+//        ret_status = stat(file_path, &file_stats);
+//        if ((ret_status == -1) && (errno == ENOENT)) {
+//            copy_into_buffer(response_buffer, response_tail,
+//                             "404 Not Found\r\n");
+//            return NULL;
+//        } else if ((ret_status == -1) && (errno == EACCES)) {
+//            copy_into_buffer(response_buffer, response_tail,
+//                             "405 Forbidden\r\n");
+//            return NULL;
+//        }
+//    }
+//
+//    // try to open file
+//    requested_file = fopen(file_path, "rb");
+//    if (requested_file == NULL) {
+//        // 405 because we know file stat exist
+//        copy_into_buffer(response_buffer, response_tail,
+//                         "405 Forbidden\r\n");
+//        return NULL;
+//    } else {
+//        copy_into_buffer(response_buffer, response_tail,
+//                         "200 OK\r\n");
+//    }
+//
+//    if (matches_command(file_extension_start, ".html")) {
+//        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/html\r\n");
+//    } else if (matches_command(file_extension_start, ".txt")) {
+//        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/plain\r\n");
+//    } else if (matches_command(file_extension_start, ".png")) {
+//        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/png\r\n");
+//    } else if (matches_command(file_extension_start, ".gif")) {
+//        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/gif\r\n");
+//    } else if (matches_command(file_extension_start, ".jpg")) {
+//        copy_into_buffer(response_buffer, response_tail, "Content-Type: image/jpg\r\n");
+//    } else if (matches_command(file_extension_start, ".css")) {
+//        copy_into_buffer(response_buffer, response_tail, "Content-Type: text/css\r\n");
+//    } else if (matches_command(file_extension_start, ".js")) {
+//        copy_into_buffer(response_buffer, response_tail, "Content-Type: application/javascript\r\n");
+//    } else {
+//        // 405 or whatever better convey file type not supported
+//        copy_into_buffer(response_buffer, response_tail,
+//                         "405 Forbidden\r\n");
+//        return NULL;
+//    }
+//
+//    // add content length header
+//    // borrowing file path buffer
+//    sprintf(file_path, "Content-Length: %ld\r\n", file_stats.st_size);
+//    copy_into_buffer(response_buffer, response_tail, file_path);
+//    return requested_file;
+//}
 
 void copy_into_buffer(char* target, int* target_tail, char* content) {
     strcpy(target + *target_tail, content);  // TODO: address possible buffer overflow here
