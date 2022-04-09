@@ -65,7 +65,7 @@ int parse_request_string(char* request_string, bool* is_GET, char* url, char* ho
                          enum http_version* version, bool* proxy_keep_alive);
 // find the length of response header in bytes, including double /r/n
 // extracts content-length from header
-int parse_response_header(char* response_string, int* response_header_length, int* response_content_length)
+void parse_response_header(char* response_string, int* response_header_length, int* response_content_length);
 // resolves hostname to address
 // only one thread at a time using 'shared_resource.addr_lookup_lock'
 // checks both hostname and address against `shared_resource.block_table`

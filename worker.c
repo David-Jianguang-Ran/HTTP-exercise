@@ -306,6 +306,42 @@ int parse_request_string(char* working_request, bool* is_get, char* url, char* h
     return SUCCESS;
 }
 
+void parse_response_header(char* response_string, int* response_header_length, int* response_content_length) {
+    char* divider_a;
+    char* divider_b;
+
+    *response_header_length = -1;
+    *response_content_length = -1;
+    // parse any response headers
+    divider_a = response_string;
+    divider_b = strchr(divider_a, '\n');
+    while (divider_b != NULL) {
+        if (matches_command_case_insensitive(divider_a, "Content-length: ")) {
+            divider_a = strchr(divider_a, ' ');
+            *response_content_length = atoi(divider_a);
+            break;
+        }
+        divider_a = divider_b + 1;
+        divider_b = strchr(divider_a, '\n');
+    }
+
+    if (*response_content_length == -1) {  // header only, no body
+        divider_b = strrchr(response_string, '\n');
+        *response_header_length = divider_b - response_string;
+    } else {
+        // find double /r/n
+        divider_a = strchr(response_string, '\r');
+        while (divider_a != NULL) {
+            if (matches_command(divider_a, "\r\n\r\n")) {
+                *response_header_length = divider_a - response_string + 3;
+                return;
+            } else {
+                divider_a = strchr(divider_a, '\r');
+            }
+        }
+    }
+}
+
 enum host_status resolve_host(struct resource_info* shared_resource, char* hostname, struct addrinfo** server_address) {
     int ret_status;
     struct addrinfo server_address_hints;
@@ -434,7 +470,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
         return FAIL;
     }
 
-    // reformat request then send to server
+    // built a new request then send to server
     url_start = strchr(current_job->request, ' ');
     while (*url_start == ' ') {
         url_start++;
