@@ -26,7 +26,7 @@ int test_blocked_sites() {
     printf("foo.prinmath.com status : %d/%d\n", resolved_status, blocked);
 
     resolved_status = resolve_host(&resources, "pornhub.com", &resolved_address);
-    printf("pornhub.com status : %d/%d\n", resolved_status, ok);
+    printf("pornhub.com status : %d/%d\n", resolved_status, ok);  // pornhub is ok but principia is blocked!? >_<
 
     return 0;
 }

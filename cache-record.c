@@ -46,8 +46,10 @@ cache_record_t* cache_record_get_or_create(cache_table_t* table, char* url, enum
         return record;  // unable to process url longer than 2048 bytes
     }
 
-    sprintf(hash_command, "md5sum <<< '%s'", url);  // TODO:  this looks like a remote code execution vulnerability. find out for sure
+
+    sprintf(hash_command, "echo \"%s\" | md5sum", url);  // TODO:  this looks like a remote code execution vulnerability. find out for sure
     // is this a valid url? : " | echo nasty-command" maybe as hexadecimal?
+    // printf("executing command in shell:\n%s\n", hash_command);
     hash_return = popen(hash_command, "r");
     fgets(hash_buffer, 32, hash_return);
     hash_buffer[32] = '\0';
