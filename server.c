@@ -26,9 +26,13 @@ void shutdown_signal_handler(int sig_num) {
 int main(int argc, char* argv[]) {
     int ret_status;
 
-    if (argc != 2) {
-        printf("usage: %s <port>\n", argv[0]);
+    if (argc < 2) {
+        printf("usage: %s <port> <cache-timeout>\n", argv[0]);
         return 1;
+    }
+
+    if (argc == 3) {
+        CACHE_TTL = atoi(argv[2]);
     }
 
     // custom shutdown signal handling

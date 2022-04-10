@@ -14,6 +14,9 @@ int test_resolving_sites() {
 
     resources = create_shared_resource(10, 10);
 
+    resolved_status = resolve_host(&resources, "localhost:8888", &resolved_address);
+    printf("localhost:8888 status : %d/%d\n", resolved_status, ok);
+
     resolved_status = resolve_host(&resources, "foo.prinmath.com", &resolved_address);
     printf("foo.prinmath.com status : %d/%d\n", resolved_status, ok);
 

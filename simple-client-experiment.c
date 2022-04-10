@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
@@ -50,11 +51,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    server_address_hints.ai_family = AF_UNSPEC;
+    server_address_hints.ai_family = AF_INET;
     server_address_hints.ai_socktype = SOCK_STREAM;
     ret_status = getaddrinfo("foo.prinmath.com", "http", &server_address_hints, &server_address);
     if (ret_status != 0) {
-        printf("error: failed to get server address info\n");
+        printf("resolved address status: %d error:%s\n", ret_status, strerror(errno));
         return 1;
     }
 

@@ -27,6 +27,7 @@ struct resource_info create_shared_resource(int job_stack_size, int reserve_slot
     created.addr_lookup_lock = malloc(sizeof(pthread_mutex_t));
     pthread_mutex_init(created.addr_lookup_lock, NULL);
     created.block_table = block_table_create();
+    created.cache_table = cache_table_create();
     return created;
 }
 
@@ -153,6 +154,8 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     if (1) {  // always printout first line of a valid request for inspection
         sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request);
         safe_write(shared_resource->std_out, output_buffer);
+        sprintf(output_buffer, "<%d> socket:%d hostname: %s path: %s\n", shared_resource->thread_id, current_job->client_socket_fd, hostname, path);
+        safe_write(shared_resource->std_out, output_buffer);
     }
 
     // resolve hostname, check hostname against block table
@@ -210,15 +213,20 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
         return blocked;
     }
 
+    // printf("checking addr: %s\n", server_name);
+
     // resolve address, this is protected by addr_lookup_lock
     pthread_mutex_lock(shared_resource->addr_lookup_lock);
-    server_address_hints.ai_family = AF_UNSPEC;
+    server_address_hints.ai_family = AF_INET;
     server_address_hints.ai_socktype = SOCK_STREAM;
+    server_address_hints.ai_protocol = IPPROTO_TCP;
     if (server_port != NULL) {
         ret_status = getaddrinfo(server_name, server_port, &server_address_hints, server_address);
     } else {
         ret_status = getaddrinfo(server_name, "http", &server_address_hints, server_address);
     }
+    // printf("resolved address status: %d error:%s\n", ret_status, strerror(errno));
+
     pthread_mutex_unlock(shared_resource->addr_lookup_lock);
     if (ret_status != 0) {
         return not_found;
@@ -271,7 +279,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
 
     // check request against cache
     url_question_mark = strchr(path, '?');
-    if (url_question_mark != NULL) {
+    if (url_question_mark == NULL) {
         // borrowing response buffer to rebuild url
         sprintf(response_buffer, "%s%s", hostname, path);
         cache_record = cache_record_get_or_create(shared_resource->cache_table, response_buffer, &cache_action);
@@ -279,6 +287,8 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     } else {
         cache_action = unavailable;
     }
+
+    printf("cache name:%s status:%d\n",cache_record->name, cache_action);
 
     // TODO : prefetch :  a job without client socket mean it is a prefetch cache job cache hit, do nothing
     if (cache_action == should_read) {
@@ -322,8 +332,10 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     }
 
     // built a new request then send to server
-    sprintf(response_buffer, "GET %s HTTP/1.1\r\nHost: %s\r\n", path, hostname);
-    result = try_send_in_chunks(server_socket_fd, current_job->request, current_job->request_tail);
+    sprintf(response_buffer, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, hostname);
+    result = try_send_in_chunks(server_socket_fd, response_buffer, strlen(response_buffer));
+    memset(response_buffer, 0, JOB_REQUEST_BUFFER_SIZE + 1);
+    printf("request sent \n%s", response_buffer);
     if (result == FAIL) {
         if (cache_file != NULL) {
             fclose(cache_file);
@@ -364,6 +376,8 @@ int cache_and_send(int client_socket, FILE* cache_file,char* buffer, int length)
     if (cache_file != NULL) {
         fwrite(buffer, sizeof(char), length, cache_file);
     }
+
+    printf("sending to client:\n%s", buffer);
 
     if (client_socket != -1) {
         return try_send_in_chunks(client_socket, buffer, length);

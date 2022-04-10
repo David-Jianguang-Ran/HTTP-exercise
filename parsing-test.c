@@ -124,6 +124,24 @@ int test_parse_request_string() {
            DOT_ONE, version,
            false, keep_alive);
 
+    strncpy(request_string, "GET http://all.i.have.is.hostname.com/ HTTP/1.1\r\n", JOB_REQUEST_BUFFER_SIZE);
+    result = parse_request_string(request_string ,&is_get, hostname, url,  &version, &keep_alive);
+    printf("---------case 5---------\n"
+           "%s\n"
+           "expected  :  actual\n"
+           "return: %d : %d\n"
+           "GET: %d : %d\n"
+           "URL: %s : %s\n"
+           "Host: %s : %s\n"
+           "version: %d : %d\n"
+           "keep alive: %d : %d\n"
+            ,request_string, SUCCESS, result,
+           true, is_get,
+           "/", url,
+           "all.i.have.is.hostname.com", hostname,
+           DOT_ONE, version,
+           false, keep_alive);
+
     printf("\n\n\n\n");
     return 0;
 }
