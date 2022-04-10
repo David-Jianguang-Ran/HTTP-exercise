@@ -10,10 +10,11 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include "worker.h"
 
-#define DEBUG 1
+#define DEBUG 2
 #define DEBUG_THREADS 0
 
 int CACHE_TTL;
@@ -192,6 +193,9 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     if (ret_status == FAIL) {
         sprintf(output_buffer, "<%d> socket:%d failed to send to client\n", shared_resource->thread_id, current_job->client_socket_fd);
         safe_write(shared_resource->std_out,output_buffer);
+    } else if (DEBUG > 1) {
+        sprintf(output_buffer, "<%d> socket:%d response sent: %s\n", shared_resource->thread_id, current_job->client_socket_fd, response_buffer);
+        safe_write(shared_resource->std_out, output_buffer);
     }
 
     // no more keep alive with proxies
@@ -311,7 +315,8 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
                 *response_tail = bytes_read;
                 result = try_send_in_chunks(current_job->client_socket_fd, response_buffer, *response_tail);
                 if (result == FAIL) {
-                    // log failure, although it is unlikely to happen
+                    sprintf(output_buffer, "<%d> socket:%d sending to client failed\n", shared_resource->thread_id, current_job->client_socket_fd);
+                    safe_write(shared_resource->std_out,output_buffer);
                     return FAIL;
                 }
                 bytes_read = fread(response_buffer, sizeof(char), JOB_REQUEST_BUFFER_SIZE, cache_file);
@@ -341,19 +346,25 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     }
 
     // built a new request then send to server
-    sprintf(response_buffer, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, hostname);
+    sprintf(response_buffer,
+            "GET %s HTTP/1.1\r\n"
+            "Host: %s\r\n"
+            "Connection: close\r\n"
+            "Proxy-Connection: close\r\n"
+            "\r\n", path, hostname);
     result = try_send_in_chunks(server_socket_fd, response_buffer, strlen(response_buffer));
-    if (DEBUG > 1) {
-        sprintf(output_buffer, "<%d> socket:%d request sent to server\n%s\n", shared_resource->thread_id, current_job->client_socket_fd,response_buffer);
-        safe_write(shared_resource->std_out,output_buffer);
-    }
-    memset(response_buffer, 0, JOB_REQUEST_BUFFER_SIZE + 1);
     if (result == FAIL) {
+        sprintf(output_buffer, "<%d> socket:%d sending to server failed\n", shared_resource->thread_id, current_job->client_socket_fd);
+        safe_write(shared_resource->std_out,output_buffer);
         if (cache_file != NULL) {
             fclose(cache_file);
         }
         return FAIL;
+    } else if (DEBUG > 1) {
+        sprintf(output_buffer, "<%d> socket:%d request sent to server\n%s\n", shared_resource->thread_id, current_job->client_socket_fd,response_buffer);
+        safe_write(shared_resource->std_out,output_buffer);
     }
+    memset(response_buffer, 0, JOB_REQUEST_BUFFER_SIZE + 1);
 
     // relay response, cache response if possible
     bytes_read = recv(server_socket_fd, response_buffer, JOB_REQUEST_BUFFER_SIZE, 0);
@@ -361,6 +372,8 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     // store chunk in cache and send to client
     result = cache_and_send(current_job->client_socket_fd, cache_file, response_buffer, bytes_read);
     if (result == FAIL) {
+        sprintf(output_buffer, "<%d> socket:%d sending to client failed\n", shared_resource->thread_id, current_job->client_socket_fd);
+        safe_write(shared_resource->std_out,output_buffer);
         return FAIL;
     }
     // response may arrive in chunks with max size equal to response buffer max
@@ -372,11 +385,18 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
             response_content_read += bytes_read;
             result = cache_and_send(current_job->client_socket_fd, cache_file, response_buffer, bytes_read);
             if (result == FAIL) {
+                sprintf(output_buffer, "<%d> socket:%d sending to client failed\n", shared_resource->thread_id, current_job->client_socket_fd);
+                safe_write(shared_resource->std_out,output_buffer);
                 return FAIL;
             }
         }
     }
+    if (DEBUG) {
+        sprintf(output_buffer, "<%d> socket:%d response relayed to client\n", shared_resource->thread_id, current_job->client_socket_fd);
+        safe_write(shared_resource->std_out,output_buffer);
+    }
     // TODO : try to start prefetch here
+    close(server_socket_fd);
     if (cache_action == should_write) {
         fclose(cache_file);
         cache_record_close(cache_record, should_write);
@@ -404,18 +424,19 @@ void copy_into_buffer(char* target, int* target_tail, char* content) {
 int try_send_in_chunks(int socket_fd, char* buffer, int length) {
     int ret_status;
     int bytes_sent;
-    char garbage_buffer[10];
+    char garbage_buffer[1000];
 
     bytes_sent = 0;
     while (bytes_sent < length) {
 
         // first see if client is still there
-        ret_status = recv(socket_fd, garbage_buffer, 9, MSG_PEEK | MSG_DONTWAIT);
+        ret_status = recv(socket_fd, garbage_buffer, 999, MSG_PEEK | MSG_DONTWAIT);
         if (ret_status == 0) {
             return FAIL;
         }
         // do send based on what's already sent;
-        ret_status = send(socket_fd, buffer + bytes_sent, length - bytes_sent, 0);
+        // printf("sending %d bytes\n", length - bytes_sent);
+        ret_status = send(socket_fd, buffer + bytes_sent, length - bytes_sent, MSG_NOSIGNAL);
         if (ret_status == -1) {
             // not sure what will cause this,
             // it's my understanding that if client is not there the whole process just get killed

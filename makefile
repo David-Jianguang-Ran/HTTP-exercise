@@ -5,14 +5,15 @@ server: directory-structure
 
 directory-structure:
 	test -d "./executables" || mkdir "./executables"
-	test -d "./executables/www" || mkdir "./executables/www"
+	test -d "./executables/cache" || mkdir "./executables/cache"
 
 experiments: directory-structure
 	gcc -Wall -o ./executables/simple-client-experiment simple-client-experiment.c
+	gcc -Wall -o ./executables/test-client-experiment test-client-experiment.c
+	gcc -Wall -o ./executables/slow-loris-client slow-client.c
 
 tests: directory-structure
 	gcc -Wextra -Wall -pthread -o ./executables/block-table-test block-table.c block-table-test.c
 	gcc -Wextra -Wall -pthread -o ./executables/cache-record-test cache-record-test.c cache-record.c
 	gcc -Wall -o ./executables/parsing-test parsing-test.c parsing.c
 	gcc -Wextra -Wall -pthread -o ./executables/resolve-host-test resolve-host-test.c $(modules)
-	#gcc -Wextra -Wall -pthread -o ./executables/job-stack-test job-stack-test.c $(modules)

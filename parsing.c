@@ -89,7 +89,7 @@ int parse_request_string(char* working_request, bool* is_get, char* hostname, ch
         }
     }
     *divider_b = ' ';
-    // *end_of_first_line = '\n';
+    *end_of_first_line = '\n';
 
     // parse any request headers
     *proxy_keep_alive = false;

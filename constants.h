@@ -12,7 +12,7 @@
 #define TERMINATE 10  // should these be an enum?
 #define ENQUEUE 11
 
-#define CLIENT_WORKER_THREADS 4
+#define CLIENT_WORKER_THREADS 10
 #define CLIENT_JOB_STACK_SIZE 32
 
 #define BLOCK_LIST_PATH "./blocklist"
