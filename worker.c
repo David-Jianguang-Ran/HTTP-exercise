@@ -22,8 +22,9 @@ int CACHE_TTL;
 struct resource_info create_shared_resource(int job_stack_size, int reserve_slots) {
     struct resource_info created;
     created.thread_id = -1;
+    created.is_client_worker = 0;
     created.client_job_stack = job_stack_construct(job_stack_size, reserve_slots);
-    // created.cache_job_stack = job_stack_construct(job_stack_size, reserve_slots);
+    created.prefetch_job_stack = job_stack_construct(job_stack_size * 4, reserve_slots);
     created.std_out = safe_init(stdout);
     created.addr_lookup_lock = malloc(sizeof(pthread_mutex_t));
     pthread_mutex_init(created.addr_lookup_lock, NULL);
@@ -34,6 +35,7 @@ struct resource_info create_shared_resource(int job_stack_size, int reserve_slot
 
 void free_shared_resource(struct resource_info* ptr_to_resource) {
     job_stack_destruct(ptr_to_resource->client_job_stack);
+    job_stack_destruct(ptr_to_resource->prefetch_job_stack);
     safe_close(ptr_to_resource->std_out);
     pthread_mutex_destroy(ptr_to_resource->addr_lookup_lock);
 }
@@ -45,7 +47,13 @@ void* worker_main(void* shared) {
     job_t* current_job;
     shared_resource = (struct resource_info*) shared;
     while (1) {
-        ret_status = job_stack_pop(shared_resource->client_job_stack, &current_job);
+
+        if (shared_resource->is_client_worker) {
+            ret_status = job_stack_pop(shared_resource->client_job_stack, &current_job);
+        } else {
+            ret_status = job_stack_pop(shared_resource->prefetch_job_stack, &current_job);
+        }
+
         if (ret_status == FINISHED) {
             return NULL;
         } else if (ret_status == SUCCESS) {
@@ -107,16 +115,18 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         return TERMINATE;
     }
 
-    // try to non-blocking read from TCP stream
-    ret_status = recv(current_job->client_socket_fd, current_job->request + current_job->request_tail,
-                      JOB_REQUEST_BUFFER_SIZE - current_job->request_tail, MSG_DONTWAIT);
-    if (ret_status == -1) {  // no data available, push job back onto the stack
-        return ENQUEUE;
-    } else if (ret_status == 0) {  // connection closed
-        return TERMINATE;
-    } else {
-        current_job->request_tail += ret_status;
-        current_job->expiration_time = (unsigned int) time(NULL) + KEEP_ALIVE_TIMEOUT;
+    if (current_job->client_socket_fd != -1) {  // prefetch jobs don't have client sockets
+        // try to non-blocking read from TCP stream
+        ret_status = recv(current_job->client_socket_fd, current_job->request + current_job->request_tail,
+                          JOB_REQUEST_BUFFER_SIZE - current_job->request_tail, MSG_DONTWAIT);
+        if (ret_status == -1) {  // no data available, push job back onto the stack
+            return ENQUEUE;
+        } else if (ret_status == 0) {  // connection closed
+            return TERMINATE;
+        } else {
+            current_job->request_tail += ret_status;
+            current_job->expiration_time = (unsigned int) time(NULL) + KEEP_ALIVE_TIMEOUT;
+        }
     }
 
     ret_status = parse_request_string(current_job->request, &request_is_get, hostname, path,
@@ -299,11 +309,15 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     }
 
     if (DEBUG) {
-        sprintf(output_buffer, "<%d> socket:%d cache hit: %d/1\n", shared_resource->thread_id, current_job->client_socket_fd, cache_action == should_read);
+        sprintf(output_buffer, "<%d> socket:%d cache hit: %d/1\n", shared_resource->thread_id, current_job->client_socket_fd, cache_action);
         safe_write(shared_resource->std_out,output_buffer);
     }
 
-    // TODO : prefetch :  a job without client socket mean it is a prefetch cache job cache hit, do nothing
+    // a job without client socket getting cache hit, do nothing
+    if (current_job->client_socket_fd == -1 && cache_action != should_write) {
+        return SUCCESS;
+    }
+
     if (cache_action == should_read) {
         // open cache file and respond
         sprintf(cache_file_path, "%s/%s", CACHE_FILE_ROOT, cache_record->name);
@@ -322,7 +336,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
                 bytes_read = fread(response_buffer, sizeof(char), JOB_REQUEST_BUFFER_SIZE, cache_file);
                 response_buffer[bytes_read] = '\0';
             }
-            // TODO : try to start prefetch here
+            dispatch_prefetch_jobs(shared_resource, cache_file, hostname);
             fclose(cache_file);
             cache_record_close(cache_record, cache_action);
             return SUCCESS;
@@ -391,15 +405,50 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
             }
         }
     }
-    if (DEBUG) {
+    if (DEBUG && current_job->client_socket_fd != -1) {
         sprintf(output_buffer, "<%d> socket:%d response relayed to client\n", shared_resource->thread_id, current_job->client_socket_fd);
         safe_write(shared_resource->std_out,output_buffer);
     }
-    // TODO : try to start prefetch here
     close(server_socket_fd);
     if (cache_action == should_write) {
+        if (current_job->client_socket_fd != -1) {;
+            dispatch_prefetch_jobs(shared_resource, cache_file, hostname);
+        }
         fclose(cache_file);
         cache_record_close(cache_record, should_write);
+    }
+    return SUCCESS;
+}
+
+int dispatch_prefetch_jobs(struct resource_info* shared_resource, FILE* cached_response, char* hostname) {
+    int result;
+    char dispatch_request[JOB_REQUEST_BUFFER_SIZE + MAX_URL_SIZE];
+    char found_link[MAX_URL_SIZE + 1];
+    job_t* prefetch_job;
+
+    result = SUCCESS;
+    fseek(cached_response, 0, SEEK_SET);
+    while (result != FINISHED) {
+        result = find_href(cached_response, found_link);
+        if (DEBUG && result == SUCCESS) {
+            sprintf(dispatch_request, "<%d> found link: %s\n", shared_resource->thread_id, found_link);
+            safe_write(shared_resource->std_out,dispatch_request);
+        }
+        if (result == SUCCESS && (matches_command(found_link, "http://") || matches_command(found_link, "/"))) {
+            prefetch_job = job_construct(-1);
+            if (matches_command(found_link, "/")) {
+                sprintf(dispatch_request, "GET http://%s%s HTTP/1.1\r\n\r\n", hostname, found_link);
+            } else {
+                sprintf(dispatch_request, "GET %s HTTP/1.1\r\n\r\n", found_link);
+            }
+            strncpy(prefetch_job->request, dispatch_request, JOB_REQUEST_BUFFER_SIZE);
+            prefetch_job->request_tail = strlen(dispatch_request);
+            job_stack_push(shared_resource->prefetch_job_stack, prefetch_job);
+            if (DEBUG) {
+                sprintf(dispatch_request, "<%d> prefetch dispatched: %s\n", shared_resource->thread_id, prefetch_job->request);
+                safe_write(shared_resource->std_out,dispatch_request);
+            }
+        }
     }
     return SUCCESS;
 }
@@ -408,12 +457,7 @@ int cache_and_send(int client_socket, FILE* cache_file,char* buffer, int length)
     if (cache_file != NULL) {
         fwrite(buffer, sizeof(char), length, cache_file);
     }
-
-    if (client_socket != -1) {
-        return try_send_in_chunks(client_socket, buffer, length);
-    }
-
-    return SUCCESS;
+    return try_send_in_chunks(client_socket, buffer, length);
 }
 
 void copy_into_buffer(char* target, int* target_tail, char* content) {
@@ -425,6 +469,10 @@ int try_send_in_chunks(int socket_fd, char* buffer, int length) {
     int ret_status;
     int bytes_sent;
     char garbage_buffer[1000];
+
+    if (socket_fd == -1) {  // why would anyone call try_send with no receiver? code reuse
+        return SUCCESS;
+    }
 
     bytes_sent = 0;
     while (bytes_sent < length) {

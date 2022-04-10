@@ -20,11 +20,11 @@
 
 struct resource_info {
     int thread_id;
-    // int is_client_worker;
+    int is_client_worker;
     block_table_t* block_table;
     cache_table_t* cache_table;
     job_stack_t* client_job_stack;
-    // job_stack_t* cache_job_stack;
+    job_stack_t* prefetch_job_stack;
     pthread_mutex_t* addr_lookup_lock;  // used for calling getaddrinfo safely
     safe_file_t* std_out;
 };
@@ -56,8 +56,6 @@ void* worker_main(void* shared);
 int process_job(job_t* current_job, struct resource_info* shared_resource);
 // int process_prefetch_job(job_t* current_job, struct resource_info* shared_resource);
 
-
-
 // resolves hostname to address
 // only one thread at a time using 'shared_resource.addr_lookup_lock'
 // checks both hostname and address against `shared_resource.block_table`
@@ -67,6 +65,8 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
 // may modify cache
 int handle_valid_request(job_t* current_job, struct resource_info* shared_resource, struct addrinfo* server_address,
                         char* path, char* hostname, char* response_buffer, int* response_tail, char* output_buffer);
+
+int dispatch_prefetch_jobs(struct resource_info* shared_resource, FILE* cached_response, char* hostname);
 
 // this function is for getting the response, saving response body to cache, and sending to client
 // this function expects a complete response waiting in server_socket

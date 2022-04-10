@@ -93,8 +93,8 @@ int main(int argc, char* argv[]) {
     }
 
     // spawn workers
-    pthread_t workers[CLIENT_WORKER_THREADS];
-    struct resource_info worker_resource[CLIENT_WORKER_THREADS];
+    pthread_t workers[CLIENT_WORKER_THREADS + PREFETCH_WORKER_THREADS];
+    struct resource_info worker_resource[CLIENT_WORKER_THREADS + PREFETCH_WORKER_THREADS];
     job_t* new_job;
     int i;
 
@@ -104,6 +104,13 @@ int main(int argc, char* argv[]) {
     for (i = 0; i < CLIENT_WORKER_THREADS; i++) {
         worker_resource[i] = worker_resource[0];
         worker_resource[i].thread_id = i;
+        worker_resource[i].is_client_worker = 1;
+        pthread_create(&workers[i], NULL, worker_main, &worker_resource[i]);
+    }
+    for (i = CLIENT_WORKER_THREADS; i < PREFETCH_WORKER_THREADS + CLIENT_WORKER_THREADS; i++) {
+        worker_resource[i] = worker_resource[0];
+        worker_resource[i].thread_id = i + 100;
+        worker_resource[i].is_client_worker = 0;
         pthread_create(&workers[i], NULL, worker_main, &worker_resource[i]);
     }
 
@@ -123,7 +130,8 @@ int main(int argc, char* argv[]) {
     // shutdown routine
     safe_write(worker_resource[0].std_out, "Shutdown signal received\n");
     job_stack_signal_finish(worker_resource[0].client_job_stack);
-    for (i = 0; i < CLIENT_WORKER_THREADS; i++) {
+    job_stack_signal_finish(worker_resource[0].prefetch_job_stack);
+    for (i = 0; i < CLIENT_WORKER_THREADS + PREFETCH_WORKER_THREADS; i++) {
         pthread_join(workers[i], NULL);
     }
 

@@ -259,10 +259,10 @@ int test_find_href_from_file() {
     text_file = fopen("../testing/index.html", "r");
 
     while (1) {
-        result = find_href(text_file, found_link, MAX_URL_SIZE);
+        result = find_href(text_file, found_link);
         if (result == SUCCESS) {
             printf("found link: %s\n", found_link);
-        } else {
+        } else if (result == FINISHED) {
             break;
         }
     }
@@ -278,10 +278,10 @@ int test_find_href_from_binary() {
     text_file = fopen("../testing/foo2.jpg", "r");
 
     while (1) {
-        result = find_href(text_file, found_link, MAX_URL_SIZE);
+        result = find_href(text_file, found_link);
         if (result == SUCCESS) {
             printf("found link: %s\n", found_link);
-        } else {
+        } else if (result == FINISHED) {
             break;
         }
     }

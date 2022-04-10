@@ -26,7 +26,7 @@ void parse_response_header(char* response_string, int* response_header_length, i
 // will return FINISHED upon reaching the end of text file
 // SUCCESS for finding a link, FAIL for finding none
 // links must have the following format href="link_content"
-int find_href(FILE* text_file, char* link_buffer, int link_buffer_length);
+int find_href(FILE* text_file, char* link_buffer);
 
 // simple wrapper for strncmp, only match up to strlen(command)
 // all strings must be zero terminated

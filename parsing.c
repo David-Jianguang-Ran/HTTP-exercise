@@ -89,7 +89,7 @@ int parse_request_string(char* working_request, bool* is_get, char* hostname, ch
         }
     }
     *divider_b = ' ';
-    *end_of_first_line = '\n';
+    // *end_of_first_line = '\n';
 
     // parse any request headers
     *proxy_keep_alive = false;
@@ -148,9 +148,9 @@ void parse_response_header(char* response_string, int* response_header_length, i
     }
 }
 
-int find_href(FILE* text_file, char* output_buffer, int output_buffer_length) {
+int find_href(FILE* text_file, char* output_buffer) {
     int bytes_read;
-    char file_buffer[MAX_URL_SIZE + 1];
+    char file_buffer[JOB_REQUEST_BUFFER_SIZE + 1];
     char* found_h;
     char* closing_quote;
 
@@ -166,6 +166,7 @@ int find_href(FILE* text_file, char* output_buffer, int output_buffer_length) {
                 closing_quote = strchr(found_h + 6, '\"');
                 if (closing_quote != NULL) {
                     strncpy(output_buffer, found_h + 6, closing_quote - found_h - 6);
+                    output_buffer[closing_quote - found_h - 6] = '\0';
                     fseek(text_file, -1 * (bytes_read - (closing_quote - file_buffer)), SEEK_CUR );
                     return SUCCESS;
                 } else {
