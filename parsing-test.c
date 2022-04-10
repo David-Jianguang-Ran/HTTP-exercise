@@ -251,6 +251,44 @@ int test_parse_response_string() {
     return 0;
 }
 
+int test_find_href_from_file() {
+    int result;
+    FILE* text_file;
+    char found_link[MAX_URL_SIZE + 1];
+
+    text_file = fopen("../testing/index.html", "r");
+
+    while (1) {
+        result = find_href(text_file, found_link, MAX_URL_SIZE);
+        if (result == SUCCESS) {
+            printf("found link: %s\n", found_link);
+        } else {
+            break;
+        }
+    }
+    return 0;
+}
+
+
+int test_find_href_from_binary() {
+    int result;
+    FILE* text_file;
+    char found_link[MAX_URL_SIZE + 1];
+
+    text_file = fopen("../testing/foo2.jpg", "r");
+
+    while (1) {
+        result = find_href(text_file, found_link, MAX_URL_SIZE);
+        if (result == SUCCESS) {
+            printf("found link: %s\n", found_link);
+        } else {
+            break;
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
-    return test_parse_request_string() + test_parse_response_string();
+    return test_find_href_from_file() + test_find_href_from_binary();
+//    return test_parse_request_string() + test_parse_response_string();
 }

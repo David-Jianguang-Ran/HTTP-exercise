@@ -18,6 +18,7 @@ struct job_info {
 typedef struct job_info job_t;
 
 job_t* job_construct(int socket_fd);
+// will close client_socket_fd
 void job_destruct(job_t*);
 void job_clear_buffer(job_t*);
 

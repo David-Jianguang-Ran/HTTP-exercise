@@ -7,6 +7,7 @@
 
 
 #include <stdbool.h>
+#include <stdio.h>
 
 #include "constants.h"
 
@@ -20,6 +21,12 @@ int parse_request_string(char* request_string, bool* is_GET, char* hostname, cha
 // extracts content-length from header
 void parse_response_header(char* response_string, int* response_header_length, int* response_content_length);
 
+// can only find 1 href after the current location of file
+// the current location of file will be set to the closing " of the found href
+// will return FINISHED upon reaching the end of text file
+// SUCCESS for finding a link, FAIL for finding none
+// links must have the following format href="link_content"
+int find_href(FILE* text_file, char* link_buffer, int link_buffer_length);
 
 // simple wrapper for strncmp, only match up to strlen(command)
 // all strings must be zero terminated

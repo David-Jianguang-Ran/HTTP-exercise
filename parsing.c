@@ -130,6 +130,7 @@ void parse_response_header(char* response_string, int* response_header_length, i
         divider_a = divider_b + 1;
         divider_b = strchr(divider_a, '\n');
     }
+
     if (*response_content_length == -1) {  // header only, no body
         divider_b = strrchr(response_string, '\n');
         *response_header_length = divider_b - response_string + 1;
@@ -143,6 +144,35 @@ void parse_response_header(char* response_string, int* response_header_length, i
             } else {
                 divider_a = strchr(divider_a + 1, '\r');
             }
+        }
+    }
+}
+
+int find_href(FILE* text_file, char* output_buffer, int output_buffer_length) {
+    int bytes_read;
+    char file_buffer[MAX_URL_SIZE + 1];
+    char* found_h;
+    char* closing_quote;
+
+    found_h = NULL;
+    while (1) {
+        bytes_read = fread(file_buffer, sizeof(char ), MAX_URL_SIZE, text_file);
+        if (bytes_read == 0) {
+            return FINISHED;
+        }
+        found_h = strchr(file_buffer, 'h');
+        while (found_h != NULL) {
+            if (matches_command(found_h, "href=")) {
+                closing_quote = strchr(found_h + 6, '\"');
+                if (closing_quote != NULL) {
+                    strncpy(output_buffer, found_h + 6, closing_quote - found_h - 6);
+                    fseek(text_file, -1 * (bytes_read - (closing_quote - file_buffer)), SEEK_CUR );
+                    return SUCCESS;
+                } else {
+                    return FAIL;
+                }
+            }
+            found_h = strchr(found_h + 1, 'h');
         }
     }
 }

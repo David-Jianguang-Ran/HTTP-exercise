@@ -14,7 +14,7 @@
 
 #include "worker.h"
 
-#define DEBUG 2
+#define DEBUG 1
 #define DEBUG_THREADS 0
 
 int CACHE_TTL;
