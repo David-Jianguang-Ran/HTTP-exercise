@@ -24,6 +24,7 @@ typedef struct block_table block_table_t;
 // this object will not be freed until shutdown by OS
 block_table_t* block_table_create();
 
+// the functions below are threadsafe
 int block_table_add(block_table_t* table, char* name);
 // this function return 0 if name is not found in table
 // return 1 if name has been added

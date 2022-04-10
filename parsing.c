@@ -77,7 +77,7 @@ int parse_request_string(char* working_request, bool* is_get, char* hostname, ch
         *version = MALFORMED;
         return SUCCESS;
     } else if (!matches_command_case_insensitive(divider_a, "http://")) {
-        *version = NOT_SUPPORTED;
+        *version = MALFORMED;
     } else {
         slash = strchr(divider_a + 7, '/');
         strncpy(hostname, divider_a + 7, slash - divider_a - 7);

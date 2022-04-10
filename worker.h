@@ -66,7 +66,7 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
 // respond to client either from cache or web server
 // may modify cache
 int handle_valid_request(job_t* current_job, struct resource_info* shared_resource, struct addrinfo* server_address,
-                        char* path, char* hostname, char* response_buffer, int* response_tail);
+                        char* path, char* hostname, char* response_buffer, int* response_tail, char* output_buffer);
 
 // this function is for getting the response, saving response body to cache, and sending to client
 // this function expects a complete response waiting in server_socket

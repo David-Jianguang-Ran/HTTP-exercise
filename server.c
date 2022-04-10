@@ -13,8 +13,7 @@
 
 #include "worker.h"
 
-#define THREADS 4
-#define JOB_STACK_SIZE 32
+#define DEBUG 1
 
 int SHOULD_SHUTDOWN;
 
@@ -22,6 +21,35 @@ void shutdown_signal_handler(int sig_num) {
     SHOULD_SHUTDOWN = 1;
 }
 
+// this function is not thread safe
+int load_block_list(block_table_t* in_memory_table) {
+    FILE* block_list_file;
+    char block_list_entry[MAX_URL_SIZE + 1];
+    int result;
+    char* result_ptr;
+    char* new_line_char;
+
+    block_list_file = fopen(BLOCK_LIST_PATH, "r");
+    if (block_list_file == NULL) {
+        printf("blocklist not found. proceeding with empty block table\n");
+        return FAIL;
+    }
+
+    result_ptr = fgets(block_list_entry, MAX_URL_SIZE, block_list_file);
+    while (result_ptr != NULL) {
+        new_line_char = strchr(block_list_entry, '\n');
+        if (new_line_char != NULL) {
+            *new_line_char = '\0';
+        }
+        result = block_table_add(in_memory_table, block_list_entry);
+        if (DEBUG && (result == SUCCESS)) {
+            printf("blocked entry: %s\n", block_list_entry);
+        }
+        result_ptr = fgets(block_list_entry, MAX_URL_SIZE, block_list_file);
+    }
+    fclose(block_list_file);
+    return SUCCESS;
+}
 
 int main(int argc, char* argv[]) {
     int ret_status;
@@ -65,13 +93,15 @@ int main(int argc, char* argv[]) {
     }
 
     // spawn workers
-    pthread_t workers[THREADS];
-    struct resource_info worker_resource[THREADS];
+    pthread_t workers[CLIENT_WORKER_THREADS];
+    struct resource_info worker_resource[CLIENT_WORKER_THREADS];
     job_t* new_job;
     int i;
 
-    worker_resource[0] = create_shared_resource(JOB_STACK_SIZE, THREADS);
-    for (i = 0; i < THREADS; i++) {
+    worker_resource[0] = create_shared_resource(CLIENT_JOB_STACK_SIZE, CLIENT_WORKER_THREADS);
+    load_block_list(worker_resource[0].block_table);  // must load blocked list before spawning worker threads
+
+    for (i = 0; i < CLIENT_WORKER_THREADS; i++) {
         worker_resource[i] = worker_resource[0];
         worker_resource[i].thread_id = i;
         pthread_create(&workers[i], NULL, worker_main, &worker_resource[i]);
@@ -79,7 +109,7 @@ int main(int argc, char* argv[]) {
 
     // listen for incoming connection
     SHOULD_SHUTDOWN = 0;
-    ret_status = listen(listener_socket_fd, JOB_STACK_SIZE);
+    ret_status = listen(listener_socket_fd, CLIENT_JOB_STACK_SIZE);
     safe_write(worker_resource[0].std_out, "Server listening for connection\n");
     while (!SHOULD_SHUTDOWN) {
         connected_fd = accept(listener_socket_fd, NULL, NULL);
@@ -93,7 +123,7 @@ int main(int argc, char* argv[]) {
     // shutdown routine
     safe_write(worker_resource[0].std_out, "Shutdown signal received\n");
     job_stack_signal_finish(worker_resource[0].client_job_stack);
-    for (i = 0; i < THREADS; i++) {
+    for (i = 0; i < CLIENT_WORKER_THREADS; i++) {
         pthread_join(workers[i], NULL);
     }
 

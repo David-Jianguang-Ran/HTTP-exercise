@@ -128,7 +128,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     if (DEBUG && (request_version == MALFORMED || request_version == NOT_SUPPORTED || !request_is_get)) {
-        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n4xx response\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request);
+        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n4xx response sent\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request);
         safe_write(shared_resource->std_out, output_buffer);
     }
 
@@ -152,8 +152,11 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     if (1) {  // always printout first line of a valid request for inspection
-        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request);
+        sprintf(output_buffer, "<%d> socket:%d %s\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request);
         safe_write(shared_resource->std_out, output_buffer);
+    }
+
+    if (DEBUG > 1) {
         sprintf(output_buffer, "<%d> socket:%d hostname: %s path: %s\n", shared_resource->thread_id, current_job->client_socket_fd, hostname, path);
         safe_write(shared_resource->std_out, output_buffer);
     }
@@ -166,13 +169,15 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     } else if (server_status == blocked) {
         copy_into_buffer(response_buffer, &response_tail,
                          "403 Forbidden\r\n");
+        sprintf(output_buffer, "<%d> socket:%d blocked access to host: %s\n", shared_resource->thread_id, current_job->client_socket_fd, hostname);
+        safe_write(shared_resource->std_out,output_buffer);
     } else if (server_status == not_found) {
         copy_into_buffer(response_buffer, &response_tail,
                          "404 Not Found\r\n");
     } else if (server_status == ok) {
         // respond to client either from cache or web server
         ret_status = handle_valid_request(current_job, shared_resource, server_address,
-                                        path, hostname, response_buffer, &response_tail);
+                                        path, hostname, response_buffer, &response_tail, output_buffer);
         return TERMINATE;
     }
 
@@ -185,7 +190,8 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     // send the response we've built over the wire
     ret_status = try_send_in_chunks(current_job->client_socket_fd, response_buffer, response_tail);
     if (ret_status == FAIL) {
-        safe_write(shared_resource->std_out,"Failed to send to client\n");
+        sprintf(output_buffer, "<%d> socket:%d failed to send to client\n", shared_resource->thread_id, current_job->client_socket_fd);
+        safe_write(shared_resource->std_out,output_buffer);
     }
 
     // no more keep alive with proxies
@@ -242,7 +248,7 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
     server_address_head = *server_address;
     while (1) {
         inet_ntop(AF_INET, &(((struct sockaddr_in*)(*server_address)->ai_addr)->sin_addr), server_name, MAX_NAME_LENGTH);
-        printf("checking addr: %s\n", server_name);
+        // printf("checking addr: %s\n", server_name);
         if (block_table_check(shared_resource->block_table, server_name)) {
             if ((*server_address)->ai_next != NULL) {
                 (*server_address) = (*server_address)->ai_next;
@@ -259,7 +265,7 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
 }
 
 int handle_valid_request(job_t* current_job, struct resource_info* shared_resource, struct addrinfo* server_address,
-                         char* path, char* hostname, char* response_buffer, int* response_tail) {
+                         char* path, char* hostname, char* response_buffer, int* response_tail, char* output_buffer) {
     int result;
     char* url_question_mark;
     int server_socket_fd;
@@ -288,7 +294,10 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
         cache_action = unavailable;
     }
 
-    printf("cache name:%s status:%d\n",cache_record->name, cache_action);
+    if (DEBUG) {
+        sprintf(output_buffer, "<%d> socket:%d cache hit: %d/1\n", shared_resource->thread_id, current_job->client_socket_fd, cache_action == should_read);
+        safe_write(shared_resource->std_out,output_buffer);
+    }
 
     // TODO : prefetch :  a job without client socket mean it is a prefetch cache job cache hit, do nothing
     if (cache_action == should_read) {
@@ -334,8 +343,11 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     // built a new request then send to server
     sprintf(response_buffer, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, hostname);
     result = try_send_in_chunks(server_socket_fd, response_buffer, strlen(response_buffer));
+    if (DEBUG > 1) {
+        sprintf(output_buffer, "<%d> socket:%d request sent to server\n%s\n", shared_resource->thread_id, current_job->client_socket_fd,response_buffer);
+        safe_write(shared_resource->std_out,output_buffer);
+    }
     memset(response_buffer, 0, JOB_REQUEST_BUFFER_SIZE + 1);
-    printf("request sent \n%s", response_buffer);
     if (result == FAIL) {
         if (cache_file != NULL) {
             fclose(cache_file);
@@ -376,8 +388,6 @@ int cache_and_send(int client_socket, FILE* cache_file,char* buffer, int length)
     if (cache_file != NULL) {
         fwrite(buffer, sizeof(char), length, cache_file);
     }
-
-    printf("sending to client:\n%s", buffer);
 
     if (client_socket != -1) {
         return try_send_in_chunks(client_socket, buffer, length);
