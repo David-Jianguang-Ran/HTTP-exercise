@@ -5,6 +5,24 @@
 #include "worker.h"
 
 
+int test_resolving_sites() {
+    struct resource_info resources;
+    struct addrinfo* resolved_address;
+    enum host_status resolved_status;
+
+    CACHE_TTL = 10;
+
+    resources = create_shared_resource(10, 10);
+
+    resolved_status = resolve_host(&resources, "foo.prinmath.com", &resolved_address);
+    printf("foo.prinmath.com status : %d/%d\n", resolved_status, ok);
+
+    resolved_status = resolve_host(&resources, "no.such.site.com.cn", &resolved_address);
+    printf("no.such.site.com.cn status : %d/%d\n", resolved_status, not_found);
+
+    return 0;
+}
+
 int test_blocked_sites() {
     struct resource_info resources;
     struct addrinfo* resolved_address;
@@ -31,7 +49,6 @@ int test_blocked_sites() {
     return 0;
 }
 
-
-int main(int arc, char* argv[]) {
-    return test_blocked_sites();
+int main(int arg, char* argv[]) {
+    return test_resolving_sites() + test_blocked_sites();
 }

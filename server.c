@@ -82,13 +82,13 @@ int main(int argc, char* argv[]) {
         new_job = job_construct(connected_fd);
         ret_status = FAIL;
         while (ret_status == FAIL) {
-            ret_status = job_stack_push(worker_resource[0].job_stack, new_job);
+            ret_status = job_stack_push(worker_resource[0].client_job_stack, new_job);
         }
     }
 
     // shutdown routine
     safe_write(worker_resource[0].std_out, "Shutdown signal received\n");
-    job_stack_signal_finish(worker_resource[0].job_stack);
+    job_stack_signal_finish(worker_resource[0].client_job_stack);
     for (i = 0; i < THREADS; i++) {
         pthread_join(workers[i], NULL);
     }

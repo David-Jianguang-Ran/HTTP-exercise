@@ -36,47 +36,49 @@ void free_shared_resource(struct resource_info* ptr_to_resource) {
     pthread_mutex_destroy(ptr_to_resource->addr_lookup_lock);
 }
 
-//void* worker_main(void* shared) {
-//    char output_buffer[PRINTOUT_BUFFER_SIZE];
-//    struct resource_info* shared_resource;
-//    int ret_status;
-//    job_t* current_job;
-//    shared_resource = (struct resource_info*) shared;
-//    while (1) {
-//        ret_status = job_stack_pop(shared_resource->job_stack, &current_job);
-//        if (ret_status == FINISHED) {
-//            return NULL;
-//        } else if (ret_status == SUCCESS) {
-//            if (DEBUG_THREADS) {
-//                sprintf(output_buffer, "<%d> socket:%d SERVICE START\n", shared_resource->thread_id, current_job->socket_fd);
-//                safe_write(shared_resource->std_out, output_buffer);
-//            }
-//            ret_status = process_job(current_job, shared_resource);  // this is where most of the work is done
-//            if (ret_status == TERMINATE) {
-//                if (DEBUG_THREADS) {
-//                    sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
-//                    safe_write(shared_resource->std_out, output_buffer);
-//                }
-//                job_destruct(current_job);
-//            } else {  // re-enqueue job, expire time already set during `process_job`
-//                ret_status = job_stack_push_back(shared_resource->job_stack, current_job);
-//                if (ret_status != SUCCESS) {
-//                    if (DEBUG_THREADS) {
-//                        sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->socket_fd);
-//                        safe_write(shared_resource->std_out, output_buffer);
-//                    }
-//                    job_destruct(current_job);
-//                } else {
-//                    if (DEBUG_THREADS) {
-//                        sprintf(output_buffer, "<%d> socket:%d RE-ENQUEUE\n", shared_resource->thread_id, current_job->socket_fd);
-//                        safe_write(shared_resource->std_out, output_buffer);
-//                    }
-//                }
-//            }
-//        }
-//    }
-//
-//}
+void* worker_main(void* shared) {
+    char output_buffer[PRINTOUT_BUFFER_SIZE];
+    struct resource_info* shared_resource;
+    int ret_status;
+    job_t* current_job;
+    shared_resource = (struct resource_info*) shared;
+    while (1) {
+        ret_status = job_stack_pop(shared_resource->client_job_stack, &current_job);
+        if (ret_status == FINISHED) {
+            return NULL;
+        } else if (ret_status == SUCCESS) {
+            if (DEBUG_THREADS) {
+                sprintf(output_buffer, "<%d> socket:%d SERVICE START\n", shared_resource->thread_id, current_job->client_socket_fd);
+                safe_write(shared_resource->std_out, output_buffer);
+            }
+
+            ret_status = process_job(current_job, shared_resource);  // this is where most of the work is done
+
+            if (ret_status == TERMINATE) {
+                if (DEBUG_THREADS) {
+                    sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->client_socket_fd);
+                    safe_write(shared_resource->std_out, output_buffer);
+                }
+                job_destruct(current_job);
+            } else {  // re-enqueue job, expire time already set during `process_job`
+                ret_status = job_stack_push_back(shared_resource->client_job_stack, current_job);
+                if (ret_status != SUCCESS) {
+                    if (DEBUG_THREADS) {
+                        sprintf(output_buffer, "<%d> socket:%d FINISHED\n", shared_resource->thread_id, current_job->client_socket_fd);
+                        safe_write(shared_resource->std_out, output_buffer);
+                    }
+                    job_destruct(current_job);
+                } else {
+                    if (DEBUG_THREADS) {
+                        sprintf(output_buffer, "<%d> socket:%d RE-ENQUEUE\n", shared_resource->thread_id, current_job->client_socket_fd);
+                        safe_write(shared_resource->std_out, output_buffer);
+                    }
+                }
+            }
+        }
+    }
+
+}
 
 int process_job(job_t* current_job, struct resource_info* shared_resource) {
     int ret_status;
@@ -149,7 +151,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
     }
 
     if (1) {  // always printout first line of a valid request for inspection
-        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\nKeep-Alive:%d\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request, request_keep_alive);
+        sprintf(output_buffer, "<%d> socket:%d request-line:\n%s\n", shared_resource->thread_id, current_job->client_socket_fd, current_job->request);
         safe_write(shared_resource->std_out, output_buffer);
     }
 
@@ -232,7 +234,7 @@ enum host_status resolve_host(struct resource_info* shared_resource, char* hostn
     server_address_head = *server_address;
     while (1) {
         inet_ntop(AF_INET, &(((struct sockaddr_in*)(*server_address)->ai_addr)->sin_addr), server_name, MAX_NAME_LENGTH);
-        // printf("checking addr: %s\n", server_name);
+        printf("checking addr: %s\n", server_name);
         if (block_table_check(shared_resource->block_table, server_name)) {
             if ((*server_address)->ai_next != NULL) {
                 (*server_address) = (*server_address)->ai_next;

@@ -1,7 +1,7 @@
 modules = thread-safe-job-stack.c thread-safe-file.c job.c block-table.c cache-record.c parsing.c worker.c
 
 server: directory-structure
-	gcc -Wall -pthread -o ./executables/server server.c worker.c $(modules)
+	gcc -Wall -pthread -o ./executables/server server.c $(modules)
 
 directory-structure:
 	test -d "./executables" || mkdir "./executables"

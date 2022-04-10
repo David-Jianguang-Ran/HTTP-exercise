@@ -33,6 +33,7 @@ int test_cache_record () {
     record_b = cache_record_get_or_create(table, "fake.url.com/first.cached.file", &status);
     printf("multiple readers are allowed the same file, record name : %s status: %d/%d\n", record_b->name, status, should_read);
 
+    // read fished for both readers
     cache_record_close(record_b, should_read);
     cache_record_close(record_c, should_read);
 

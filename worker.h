@@ -39,6 +39,8 @@ struct resource_info create_shared_resource(int job_stack_size, int reserve_slot
 // calling this frees all underlying resource, only need to call it once for multiple copies
 void free_shared_resource(struct resource_info* ptr_to_resource);
 
+void* worker_main(void* shared);
+
 // this function:
 // - gets a request from client
 // - checks host name against block table
