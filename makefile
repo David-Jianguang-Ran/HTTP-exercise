@@ -13,6 +13,7 @@ experiments: directory-structure
 	gcc -Wall -o ./executables/slow-loris-client slow-client.c
 
 tests: directory-structure
+	gcc -Wall -pthread -o ./executables/job-stack-test job-stack-test.c thread-safe-job-stack.c job.c thread-safe-file.c
 	gcc -Wall -pthread -o ./executables/block-table-test block-table.c block-table-test.c
 	gcc -Wall -pthread -o ./executables/cache-record-test cache-record-test.c cache-record.c
 	gcc -Wall -o ./executables/parsing-test parsing-test.c parsing.c

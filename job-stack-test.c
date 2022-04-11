@@ -11,7 +11,7 @@
 #include "thread-safe-job-stack.h"
 #include "thread-safe-file.h"
 
-
+safe_file_t* STD_OUT;
 
 struct heap_obj {
     int var;
@@ -31,9 +31,11 @@ void* thread_main(void* arg) {
             return NULL;
         } else if (ret_status == SUCCESS && current_job->request_tail == 0) {
             job_destruct(current_job);
+            safe_write(STD_OUT, "finishing\n");
         } else if (ret_status == SUCCESS) {
             current_job->request_tail--;
             job_stack_push_back(job_stack, current_job);
+            safe_write(STD_OUT, "popping\n");
         }
     }
 }
@@ -58,6 +60,7 @@ int main(int argc, char* argv[]) {
     stack_size = atoi(argv[3]);
 
     job_stack = job_stack_construct(stack_size,thread_count);
+    STD_OUT = safe_init(stdout);
 
     pthread_t threads[thread_count];
     for (i = 0; i < thread_count; i++) {
@@ -71,6 +74,7 @@ int main(int argc, char* argv[]) {
         ret_status = FAIL;
         while (ret_status == FAIL) {
             ret_status = job_stack_push(job_stack, new_job);
+            safe_write(STD_OUT, "pushing\n");
         }
     }
 
@@ -80,6 +84,8 @@ int main(int argc, char* argv[]) {
         pthread_join(threads[i], NULL);
     }
 
+    printf("all finished!\n");
+    safe_close(STD_OUT);
     job_stack_destruct(job_stack);
     return 0;
 

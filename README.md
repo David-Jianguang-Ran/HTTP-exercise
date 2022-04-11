@@ -12,14 +12,19 @@ The finished binary will be at ./executables/server the default cache root is ./
 
 ## few thing to note 
 
-- while a resource is being retrieved the first time from server, before it is finished. 
-The `cache_record_get_or_create` will return an unavailable status when another thread checks the same resource
+- most comments and documentations are in .h files  
+- client request / response and prefetch uses pretty much the same code path and same objects for ease of development.  
+- While a resource is being retrieved for the first time from server, before it is finished. 
+The `cache_record_get_or_create` will return an unavailable status when another thread checks the same resource.
 This means if a resource is requested in quick succession, the first few requests will trigger a server get. 
 The rationale behind this is that coordinating reading incomplete cache file is risky 
 and blocking subsequent requests untill the first one finishes is bad for responsiveness to interactive users. 
-- while the cache files are stored on disk, the cache record used for retrieving 
+- While the cache files are stored on disk, the cache record used for retrieving 
 and coordinating multiple reader / writer thread lives in memory and will be lost after server shutdown. 
-This means cached responses do not persist past the lifetime of the server program.
+This means cached responses do not persist past the lifetime of the server program.  
+- During `cache_record_get_or_create` this program will user `popen` to execute `md5sum` in the terminal. 
+This seems pretty dangerous but given the time constraint and the scope of the assignment it seems reasonable. 
+This is not how I live my life normally. 
 
 
 ## want to see extra printout?
