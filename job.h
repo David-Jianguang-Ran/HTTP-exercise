@@ -7,8 +7,6 @@
 
 #include "constants.h"
 
-// why use struct instead of just a socket_fd?
-// using a struct makes it easier to extend and add `connection: keep-alive` feature
 struct job_info {
     int client_socket_fd;
     char request[JOB_REQUEST_BUFFER_SIZE + 1];

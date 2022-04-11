@@ -13,7 +13,7 @@ experiments: directory-structure
 	gcc -Wall -o ./executables/slow-loris-client slow-client.c
 
 tests: directory-structure
-	gcc -Wextra -Wall -pthread -o ./executables/block-table-test block-table.c block-table-test.c
-	gcc -Wextra -Wall -pthread -o ./executables/cache-record-test cache-record-test.c cache-record.c
+	gcc -Wall -pthread -o ./executables/block-table-test block-table.c block-table-test.c
+	gcc -Wall -pthread -o ./executables/cache-record-test cache-record-test.c cache-record.c
 	gcc -Wall -o ./executables/parsing-test parsing-test.c parsing.c
-	gcc -Wextra -Wall -pthread -o ./executables/resolve-host-test resolve-host-test.c $(modules)
+	gcc -Wall -pthread -o ./executables/resolve-host-test resolve-host-test.c $(modules)

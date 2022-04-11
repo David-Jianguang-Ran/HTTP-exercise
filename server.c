@@ -103,13 +103,13 @@ int main(int argc, char* argv[]) {
 
     for (i = 0; i < CLIENT_WORKER_THREADS; i++) {
         worker_resource[i] = worker_resource[0];
-        worker_resource[i].thread_id = i;
+        worker_resource[i].thread_id = i + 100;
         worker_resource[i].is_client_worker = 1;
         pthread_create(&workers[i], NULL, worker_main, &worker_resource[i]);
     }
     for (i = CLIENT_WORKER_THREADS; i < PREFETCH_WORKER_THREADS + CLIENT_WORKER_THREADS; i++) {
         worker_resource[i] = worker_resource[0];
-        worker_resource[i].thread_id = i + 100;
+        worker_resource[i].thread_id = i + 200;
         worker_resource[i].is_client_worker = 0;
         pthread_create(&workers[i], NULL, worker_main, &worker_resource[i]);
     }
@@ -136,7 +136,7 @@ int main(int argc, char* argv[]) {
     }
 
     close(listener_socket_fd);
-    safe_write(worker_resource[0].std_out, "Shutdown signal complete. Good Bye!\n");
+    safe_write(worker_resource[0].std_out, "Shutdown complete. Good Bye!\n");
     free_shared_resource(&worker_resource[0]);
     return 0;
 }

@@ -14,7 +14,7 @@
 
 #include "worker.h"
 
-#define DEBUG 1
+#define DEBUG 1  // DEBUG 2 is possible but very confusing
 #define DEBUG_THREADS 0
 
 int CACHE_TTL;
@@ -309,7 +309,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     }
 
     if (DEBUG) {
-        sprintf(output_buffer, "<%d> socket:%d cache hit: %d/1\n", shared_resource->thread_id, current_job->client_socket_fd, cache_action);
+        sprintf(output_buffer, "<%d> socket:%d cache: %s\n", shared_resource->thread_id, current_job->client_socket_fd, cache_action == should_read ? "hit" : "miss");
         safe_write(shared_resource->std_out,output_buffer);
     }
 
@@ -346,7 +346,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
     if (cache_action == should_write) {
         // open file for cache write
         sprintf(cache_file_path, "%s/%s", CACHE_FILE_ROOT, cache_record->name);
-        cache_file = fopen(cache_file_path, "w");
+        cache_file = fopen(cache_file_path, "w+");
     }
 
     // open a socket to server
