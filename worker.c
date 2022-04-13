@@ -333,6 +333,8 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
                 if (result == FAIL) {
                     sprintf(output_buffer, "<%d> socket:%d sending to client failed\n", shared_resource->thread_id, current_job->client_socket_fd);
                     safe_write(shared_resource->std_out,output_buffer);
+                    fclose(cache_file);
+                    cache_record_close(cache_record, cache_action);
                     return FAIL;
                 }
                 bytes_read = fread(response_buffer, sizeof(char), JOB_REQUEST_BUFFER_SIZE, cache_file);
@@ -403,7 +405,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
             if (result == FAIL) {
                 sprintf(output_buffer, "<%d> socket:%d sending to client failed\n", shared_resource->thread_id, current_job->client_socket_fd);
                 safe_write(shared_resource->std_out,output_buffer);
-                return FAIL;
+                break;
             }
         }
     }
