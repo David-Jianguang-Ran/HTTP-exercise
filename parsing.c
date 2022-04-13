@@ -81,6 +81,7 @@ int parse_request_string(char* working_request, bool* is_get, char* hostname, ch
     } else {
         slash = strchr(divider_a + 7, '/');
         strncpy(hostname, divider_a + 7, slash - divider_a - 7);
+        hostname[slash - divider_a - 7] = '\0';
         strncpy(path, slash, MAX_URL_SIZE);
         // strip the last char if it is '/', except when url is "/"
         slash = strrchr(path, '/');
@@ -105,6 +106,7 @@ int parse_request_string(char* working_request, bool* is_get, char* hostname, ch
                 divider_a++;
             }
             strncpy(hostname, divider_a, divider_b - divider_a - 2);
+            hostname[divider_b - divider_a - 1] = '\0';
         }
         divider_a = divider_b + 1;
         divider_b = strchr(divider_a, '\n');

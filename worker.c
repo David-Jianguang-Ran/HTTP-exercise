@@ -93,17 +93,17 @@ void* worker_main(void* shared) {
 int process_job(job_t* current_job, struct resource_info* shared_resource) {
     int ret_status;
     bool request_is_get;
-    char path[MAX_URL_SIZE + 1];
-    char hostname[MAX_NAME_LENGTH + 1];
+    char path[MAX_URL_SIZE + 1] = "";
+    char hostname[MAX_NAME_LENGTH + 1] = "";
     enum http_version request_version;
     bool request_keep_alive;
 
     struct addrinfo* server_address;
     enum host_status server_status;
 
-    char output_buffer[PRINTOUT_BUFFER_SIZE + JOB_REQUEST_BUFFER_SIZE];
-    char response_buffer[JOB_REQUEST_BUFFER_SIZE + 1];
-    int response_tail;
+    char output_buffer[PRINTOUT_BUFFER_SIZE + JOB_REQUEST_BUFFER_SIZE] = "";
+    char response_buffer[JOB_REQUEST_BUFFER_SIZE + 1] = "";
+    int response_tail = 0;
 
 
     // discard expired jobs
@@ -189,6 +189,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         // respond to client either from cache or web server
         ret_status = handle_valid_request(current_job, shared_resource, server_address,
                                         path, hostname, response_buffer, &response_tail, output_buffer);
+        freeaddrinfo(server_address);
         return TERMINATE;
     }
 
@@ -207,7 +208,7 @@ int process_job(job_t* current_job, struct resource_info* shared_resource) {
         sprintf(output_buffer, "<%d> socket:%d response sent: %s\n", shared_resource->thread_id, current_job->client_socket_fd, response_buffer);
         safe_write(shared_resource->std_out, output_buffer);
     }
-
+    freeaddrinfo(server_address);
     // no more keep alive with proxies
     return TERMINATE;
 }

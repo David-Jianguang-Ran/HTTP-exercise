@@ -289,6 +289,9 @@ int test_find_href_from_binary() {
 }
 
 int main(int argc, char* argv[]) {
-    return test_find_href_from_file() + test_find_href_from_binary();
-//    return test_parse_request_string() + test_parse_response_string();
+    test_find_href_from_file();
+    test_find_href_from_binary();
+    test_parse_request_string();
+    test_parse_response_string();
+    return 0;
 }

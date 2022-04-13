@@ -23,6 +23,9 @@ int test_resolving_sites() {
     resolved_status = resolve_host(&resources, "no.such.site.com.cn", &resolved_address);
     printf("no.such.site.com.cn status : %d/%d\n", resolved_status, not_found);
 
+    resolved_status = resolve_host(&resources, "localhost:9999", &resolved_address);
+    printf("localhost:9999 status : %d/%d\n", resolved_status, ok);
+
     return 0;
 }
 
