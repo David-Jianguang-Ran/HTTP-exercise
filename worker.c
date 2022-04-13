@@ -316,6 +316,7 @@ int handle_valid_request(job_t* current_job, struct resource_info* shared_resour
 
     // a job without client socket getting cache hit, do nothing
     if (current_job->client_socket_fd == -1 && cache_action != should_write) {
+        cache_record_close(cache_record, cache_action);
         return SUCCESS;
     }
 
