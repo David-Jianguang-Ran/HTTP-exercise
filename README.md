@@ -1,5 +1,16 @@
-# PA3 - HTTP Proxy
+# Programming Assignment 3 - HTTP Proxy
 
+HTTP proxy that supports caching and link prefetching.  
+This proxy only support HTTP GET method.    
+This program is an academic exercise.  
+
+## what does it do?
+
+run server executable with arguments: `<port#> <cached-file-ttl-seconds>`  
+optionally support a `blocklist` file where blocked hosts are listed as `<domain>` or `<domain>:<port>` or `<ip>:<port>`  
+This `blocklist` file needs to be in the working directory of the server executable.  
+
+## Overview
 ![](./overview.png)
 
 
